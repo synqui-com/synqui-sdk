@@ -1,0 +1,13 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include pyproject.toml
+include cognitionflow/py.typed
+
+recursive-include cognitionflow *.py *.pyi
+recursive-exclude tests *
+recursive-exclude examples *
+exclude .gitignore
+exclude .pre-commit-config.yaml
+exclude tox.ini
+exclude Makefile
