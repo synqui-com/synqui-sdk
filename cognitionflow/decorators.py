@@ -1,7 +1,6 @@
 """Convenience decorators for the CognitionFlow SDK."""
 
 from typing import Callable
-from . import get_default_sdk
 
 
 def trace(agent_name: str, **kwargs) -> Callable:
@@ -26,4 +25,6 @@ def trace(agent_name: str, **kwargs) -> Callable:
         def process_data(data):
             return {"processed": data}
     """
+    # Import here to avoid circular import
+    from . import get_default_sdk
     return get_default_sdk().trace(agent_name, **kwargs)
