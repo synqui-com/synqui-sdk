@@ -207,6 +207,9 @@ def configure(
     from .sdk import CognitionFlowSDK
     sdk = CognitionFlowSDK(config)
     set_default_sdk(sdk)
+    # Also set the global instance for workflow API (use the same instance)
+    import cognitionflow.sdk
+    cognitionflow.sdk._sdk_instance = sdk
 
     return sdk
 

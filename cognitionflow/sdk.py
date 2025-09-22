@@ -350,6 +350,7 @@ class CognitionFlowSDK:
             # Queue the trace data
             self._event_queue.put(trace_data, timeout=1.0)
             logger.debug(f"Queued trace: {trace_data.agent_name} ({trace_data.span_id})")
+            print(f"🔍 SDK: Queued trace: {trace_data.agent_name} ({trace_data.span_id})")
 
         except Exception as e:
             logger.warning(f"Failed to queue trace data: {e}")
@@ -390,3 +391,30 @@ class CognitionFlowSDK:
             Number of events in the queue
         """
         return self._event_queue.qsize()
+
+
+# Global SDK instance
+_sdk_instance: Optional[CognitionFlowSDK] = None
+
+
+def get_current_sdk() -> Optional[CognitionFlowSDK]:
+    """Get the current global SDK instance.
+    
+    Returns:
+        Current SDK instance or None if not initialized
+    """
+    return _sdk_instance
+
+
+def initialize(config: SDKConfig) -> CognitionFlowSDK:
+    """Initialize the global SDK instance.
+    
+    Args:
+        config: SDK configuration
+        
+    Returns:
+        Initialized SDK instance
+    """
+    global _sdk_instance
+    _sdk_instance = CognitionFlowSDK(config)
+    return _sdk_instance

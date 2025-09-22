@@ -34,6 +34,7 @@ from .sdk import CognitionFlowSDK
 from .config import SDKConfig, configure, configure_from_env
 from .context import get_current_span
 from .decorators import trace as _trace_decorator
+from .workflow import workflow, Workflow
 
 # Default SDK instance
 _default_sdk: Optional[CognitionFlowSDK] = None
@@ -64,6 +65,11 @@ def span(operation_name: str, **kwargs):
     return get_default_sdk().span(operation_name, **kwargs)
 
 
+def async_span(operation_name: str, **kwargs):
+    """Async span context manager using the default SDK instance."""
+    return get_default_sdk().async_span(operation_name, **kwargs)
+
+
 def flush():
     """Flush pending traces using the default SDK instance."""
     get_default_sdk().flush()
@@ -80,10 +86,13 @@ __all__ = [
     "configure_from_env",
     "trace",
     "span",
+    "async_span",
+    "workflow",
     "flush",
     "shutdown",
     "get_current_span",
     "SDKConfig",
     "CognitionFlowSDK",
+    "Workflow",
     "__version__",
 ]
