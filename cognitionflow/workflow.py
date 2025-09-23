@@ -294,7 +294,7 @@ class Workflow:
             if step.description:
                 step_span.set_attribute("description", step.description)
             print(f"      🔍 Created step span: {step_span.span_id} for {step_name}")
-            
+
             try:
                 # Set input data on the span
                 step_span.inputs = {"step_inputs": step_inputs}
@@ -307,6 +307,57 @@ class Workflow:
                 
                 # Set output data on the span
                 step_span.outputs = {"result": result}
+                
+                # Apply token counting to both input data and result
+                from .sdk import get_current_sdk
+                sdk = get_current_sdk()
+                if sdk and sdk.config.capture_tokens:
+                    try:
+                        from .token_counter import count_tokens, extract_tokens_from_llm_response
+                        
+                        # Count input tokens from step inputs
+                        input_tokens = 0
+                        if step_inputs:
+                            input_text = str(step_inputs)
+                            input_tokens = count_tokens(input_text)
+                        
+                        # Count output tokens from result (for LLM calls)
+                        output_tokens = 0
+                        total_tokens = input_tokens
+                        cost = 0.0
+                        model_name = None
+                        provider = None
+                        
+                        if result:
+                            # Try to extract tokens from LLM response
+                            token_count = extract_tokens_from_llm_response(result)
+                            if token_count.total_tokens > 0:
+                                # This is an LLM response
+                                input_tokens = token_count.input_tokens
+                                output_tokens = token_count.output_tokens
+                                total_tokens = token_count.total_tokens
+                                cost = token_count.cost
+                                model_name = token_count.model
+                                provider = token_count.provider
+                            else:
+                                # This is not an LLM response, count output text tokens
+                                output_text = str(result)
+                                output_tokens = count_tokens(output_text)
+                                total_tokens = input_tokens + output_tokens
+                        
+                        # Set token information on the span
+                        step_span.input_tokens = input_tokens
+                        step_span.output_tokens = output_tokens
+                        step_span.total_tokens = total_tokens
+                        step_span.cost = cost
+                        step_span.model_name = model_name
+                        step_span.model_provider = provider
+                        
+                        if total_tokens > 0:
+                            print(f"      🔍 Token count: {total_tokens} tokens (input: {input_tokens}, output: {output_tokens})")
+                        
+                    except Exception as e:
+                        print(f"      ⚠️ Token counting failed: {e}")
                 
                 step.result = result
                 step.executed = True

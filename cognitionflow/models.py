@@ -38,6 +38,12 @@ class TraceData:
         tags: Key-value tags for filtering and grouping
         metadata: Additional metadata
         attributes: Custom attributes set during execution
+        input_tokens: Number of input tokens (for LLM calls)
+        output_tokens: Number of output tokens (for LLM calls)
+        total_tokens: Total number of tokens
+        cost: Estimated cost of the operation
+        model_name: Name of the model used (for LLM calls)
+        model_provider: Provider of the model (openai, anthropic, etc.)
     """
 
     trace_id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -55,6 +61,14 @@ class TraceData:
     tags: Dict[str, str] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
     attributes: Dict[str, Any] = field(default_factory=dict)
+    
+    # Token counting fields
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost: float = 0.0
+    model_name: Optional[str] = None
+    model_provider: Optional[str] = None
 
     def set_attribute(self, key: str, value: Any):
         """Set a custom attribute on the span.
@@ -125,6 +139,12 @@ class TraceData:
             "tags": self.tags,
             "metadata": self.metadata,
             "attributes": self.attributes,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "cost": self.cost,
+            "model_name": self.model_name,
+            "model_provider": self.model_provider,
         }
 
 

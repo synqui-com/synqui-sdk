@@ -41,6 +41,7 @@ class SDKConfig:
     capture_inputs: bool = True
     capture_outputs: bool = True
     capture_errors: bool = True
+    capture_tokens: bool = True
     environment: str = "development"
     debug: bool = False
     enabled: bool = True
@@ -77,6 +78,7 @@ def configure_from_env() -> SDKConfig:
         COGNITIONFLOW_CAPTURE_INPUTS: Capture function inputs (true/false)
         COGNITIONFLOW_CAPTURE_OUTPUTS: Capture function outputs (true/false)
         COGNITIONFLOW_CAPTURE_ERRORS: Capture error information (true/false)
+        COGNITIONFLOW_CAPTURE_TOKENS: Capture token counts (true/false)
         COGNITIONFLOW_ENVIRONMENT: Environment name
         COGNITIONFLOW_DEBUG: Enable debug logging (true/false)
         COGNITIONFLOW_ENABLED: Enable SDK (true/false)
@@ -111,6 +113,7 @@ def configure_from_env() -> SDKConfig:
         capture_inputs=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_INPUTS", "true")),
         capture_outputs=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_OUTPUTS", "true")),
         capture_errors=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_ERRORS", "true")),
+        capture_tokens=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_TOKENS", "true")),
         environment=os.getenv("COGNITIONFLOW_ENVIRONMENT", "development"),
         debug=str_to_bool(os.getenv("COGNITIONFLOW_DEBUG", "false")),
         enabled=str_to_bool(os.getenv("COGNITIONFLOW_ENABLED", "true")),
@@ -129,6 +132,7 @@ def configure(
     capture_inputs: Optional[bool] = None,
     capture_outputs: Optional[bool] = None,
     capture_errors: Optional[bool] = None,
+    capture_tokens: Optional[bool] = None,
     environment: Optional[str] = None,
     debug: Optional[bool] = None,
     enabled: Optional[bool] = None,
@@ -152,6 +156,7 @@ def configure(
         capture_inputs: Whether to capture function inputs
         capture_outputs: Whether to capture function outputs
         capture_errors: Whether to capture error information
+        capture_tokens: Whether to capture token counts
         environment: Environment name
         debug: Enable debug logging
         enabled: Whether the SDK is enabled
@@ -186,6 +191,8 @@ def configure(
         config.capture_outputs = capture_outputs
     if capture_errors is not None:
         config.capture_errors = capture_errors
+    if capture_tokens is not None:
+        config.capture_tokens = capture_tokens
     if environment is not None:
         config.environment = environment
     if debug is not None:

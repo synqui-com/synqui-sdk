@@ -14,6 +14,7 @@ from .models import TraceData, SpanStatus
 from .context import span_context, create_child_span
 from .serialization import safe_serialize
 from .batch_processor import BatchProcessor
+from .token_counter import count_function_tokens, extract_tokens_from_llm_response
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,10 @@ class CognitionFlowSDK:
                     if self.config.capture_outputs:
                         trace_data.outputs = self._capture_outputs(result)
 
+                    # Count tokens if enabled
+                    if self.config.capture_tokens:
+                        self._count_tokens(trace_data, args, func_kwargs, result)
+
                     # Mark as completed
                     trace_data.finish(SpanStatus.COMPLETED)
 
@@ -181,6 +186,10 @@ class CognitionFlowSDK:
                     # Capture outputs
                     if self.config.capture_outputs:
                         trace_data.outputs = self._capture_outputs(result)
+
+                    # Count tokens if enabled
+                    if self.config.capture_tokens:
+                        self._count_tokens(trace_data, args, func_kwargs, result)
 
                     # Mark as completed
                     trace_data.finish(SpanStatus.COMPLETED)
@@ -332,6 +341,40 @@ class CognitionFlowSDK:
         except Exception as e:
             logger.debug(f"Failed to capture outputs: {e}")
             return {"error": "Failed to capture outputs"}
+
+    def _count_tokens(self, trace_data: TraceData, args: tuple, kwargs: dict, result: Any) -> None:
+        """Count tokens for function inputs and outputs.
+
+        Args:
+            trace_data: Trace data to update with token counts
+            args: Function arguments
+            kwargs: Function keyword arguments
+            result: Function result
+        """
+        try:
+            # Try to extract tokens from LLM response first
+            if hasattr(result, 'usage') or isinstance(result, dict) and 'usage' in result:
+                token_count = extract_tokens_from_llm_response(result)
+                if token_count.total_tokens > 0:
+                    trace_data.input_tokens = token_count.input_tokens
+                    trace_data.output_tokens = token_count.output_tokens
+                    trace_data.total_tokens = token_count.total_tokens
+                    trace_data.model_name = token_count.model
+                    trace_data.model_provider = token_count.provider
+                    return
+            
+            # Fallback to counting tokens from inputs and outputs
+            token_count = count_function_tokens(args, result)
+            trace_data.input_tokens = token_count.input_tokens
+            trace_data.output_tokens = token_count.output_tokens
+            trace_data.total_tokens = token_count.total_tokens
+            
+        except Exception as e:
+            logger.debug(f"Failed to count tokens: {e}")
+            # Set default values
+            trace_data.input_tokens = 0
+            trace_data.output_tokens = 0
+            trace_data.total_tokens = 0
 
     def _send_trace(self, trace_data: TraceData):
         """Send trace data to the batch processor.
