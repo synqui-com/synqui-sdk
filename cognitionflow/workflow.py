@@ -348,11 +348,13 @@ class Workflow:
             tags={
                 "workflow_step": step.name,
                 "agent_type": step.agent_type,
-                "step_type": step.step_type.value
+                "step_type": step.step_type.value,
+                "depends_on": ",".join(step.depends_on) if step.depends_on else ""
             },
             metadata={
                 "step_inputs": step_inputs,
-                "parallel_group": step.parallel_group
+                "parallel_group": step.parallel_group,
+                "dependencies": step.depends_on
             }
         )
     
