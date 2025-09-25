@@ -15,6 +15,7 @@ from .context import span_context, create_child_span
 from .serialization import safe_serialize
 from .batch_processor import BatchProcessor
 from .token_counter import count_function_tokens, extract_tokens_from_llm_response
+from .auto_instrumentation import AutoInstrumentationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ class CognitionFlowSDK:
         self._event_queue: Queue = Queue()
         self._batch_processor: Optional[BatchProcessor] = None
         self._enabled = config.enabled
+        self._auto_instrumentation: Optional[AutoInstrumentationEngine] = None
 
         # Set up logging
         if config.debug:
@@ -53,6 +55,10 @@ class CognitionFlowSDK:
         # Start batch processor if enabled
         if self._enabled:
             self._start_batch_processor()
+            
+            # Initialize auto-instrumentation if enabled
+            if config.auto_instrument_llm:
+                self._start_auto_instrumentation()
 
         logger.info(f"CognitionFlow SDK initialized (enabled={self._enabled})")
 
@@ -62,6 +68,20 @@ class CognitionFlowSDK:
             self._batch_processor = BatchProcessor(self)
             self._batch_processor.start()
             logger.debug("Batch processor started")
+    
+    def _start_auto_instrumentation(self):
+        """Start automatic LLM instrumentation."""
+        if self._auto_instrumentation is None:
+            self._auto_instrumentation = AutoInstrumentationEngine(self)
+            self._auto_instrumentation.instrument_all()
+            logger.debug("Auto-instrumentation started")
+    
+    def _stop_auto_instrumentation(self):
+        """Stop automatic LLM instrumentation."""
+        if self._auto_instrumentation:
+            self._auto_instrumentation.restore_original_methods()
+            self._auto_instrumentation = None
+            logger.debug("Auto-instrumentation stopped")
 
     def trace(self, agent_name: str, **kwargs) -> Callable:
         """Decorator for tracing function calls.
@@ -451,6 +471,9 @@ class CognitionFlowSDK:
         Args:
             timeout: Maximum time to wait for shutdown to complete
         """
+        # Stop auto-instrumentation
+        self._stop_auto_instrumentation()
+        
         if self._batch_processor:
             self._batch_processor.shutdown()
             self._batch_processor = None

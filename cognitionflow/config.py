@@ -29,6 +29,9 @@ class SDKConfig:
         debug: Enable debug logging
         enabled: Whether the SDK is enabled
         tags: Global tags to add to all traces
+        auto_instrument_llm: Whether to automatically instrument LLM libraries
+        capture_system_prompts: Whether to automatically capture system prompts
+        detect_agent_frameworks: Whether to auto-detect agent frameworks
     """
 
     api_key: str
@@ -46,6 +49,9 @@ class SDKConfig:
     debug: bool = False
     enabled: bool = True
     tags: Dict[str, str] = field(default_factory=dict)
+    auto_instrument_llm: bool = True
+    capture_system_prompts: bool = True
+    detect_agent_frameworks: bool = True
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -117,7 +123,10 @@ def configure_from_env() -> SDKConfig:
         environment=os.getenv("COGNITIONFLOW_ENVIRONMENT", "development"),
         debug=str_to_bool(os.getenv("COGNITIONFLOW_DEBUG", "false")),
         enabled=str_to_bool(os.getenv("COGNITIONFLOW_ENABLED", "true")),
-        tags=parse_tags(os.getenv("COGNITIONFLOW_TAGS", "{}"))
+        tags=parse_tags(os.getenv("COGNITIONFLOW_TAGS", "{}")),
+        auto_instrument_llm=str_to_bool(os.getenv("COGNITIONFLOW_AUTO_INSTRUMENT_LLM", "true")),
+        capture_system_prompts=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_SYSTEM_PROMPTS", "true")),
+        detect_agent_frameworks=str_to_bool(os.getenv("COGNITIONFLOW_DETECT_AGENT_FRAMEWORKS", "true"))
     )
 
 
@@ -137,6 +146,9 @@ def configure(
     debug: Optional[bool] = None,
     enabled: Optional[bool] = None,
     tags: Optional[Dict[str, str]] = None,
+    auto_instrument_llm: Optional[bool] = None,
+    capture_system_prompts: Optional[bool] = None,
+    detect_agent_frameworks: Optional[bool] = None,
     **kwargs
 ) -> "CognitionFlowSDK":
     """Configure the CognitionFlow SDK.
@@ -201,6 +213,12 @@ def configure(
         config.enabled = enabled
     if tags is not None:
         config.tags.update(tags)
+    if auto_instrument_llm is not None:
+        config.auto_instrument_llm = auto_instrument_llm
+    if capture_system_prompts is not None:
+        config.capture_system_prompts = capture_system_prompts
+    if detect_agent_frameworks is not None:
+        config.detect_agent_frameworks = detect_agent_frameworks
 
     # Auto-provision project if enabled and missing
     auto_provision = os.getenv("COGNITIONFLOW_AUTO_PROVISION_PROJECT", "true").lower() == "true"
