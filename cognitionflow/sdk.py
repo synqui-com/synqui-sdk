@@ -4,6 +4,7 @@ import asyncio
 import functools
 import logging
 import time
+import atexit
 from contextlib import asynccontextmanager, contextmanager
 from queue import Queue, Empty
 from typing import Any, Callable, Dict, Optional, Union, Generator
@@ -55,10 +56,14 @@ class CognitionFlowSDK:
         # Start batch processor if enabled
         if self._enabled:
             self._start_batch_processor()
-            
+
             # Initialize auto-instrumentation if enabled
             if config.auto_instrument_llm:
                 self._start_auto_instrumentation()
+
+        # Register automatic shutdown to ensure traces are flushed on program exit
+        if self._enabled:
+            atexit.register(self.shutdown)
 
         logger.info(f"CognitionFlow SDK initialized (enabled={self._enabled})")
 
@@ -135,6 +140,10 @@ class CognitionFlowSDK:
                 metadata=kwargs.get("metadata", {})
             )
 
+            # Set the name field for workflow traces to match agent_name
+            # This ensures the batch processor can identify workflow spans
+            trace_data.name = agent_name
+
             # Set prompt fields if provided
             self._set_prompt_fields(trace_data, kwargs)
 
@@ -193,6 +202,10 @@ class CognitionFlowSDK:
                 tags=kwargs.get("tags", {}),
                 metadata=kwargs.get("metadata", {})
             )
+
+            # Set the name field for workflow traces to match agent_name
+            # This ensures the batch processor can identify workflow spans
+            trace_data.name = agent_name
 
             # Set prompt fields if provided
             self._set_prompt_fields(trace_data, kwargs)
@@ -269,6 +282,10 @@ class CognitionFlowSDK:
             metadata=kwargs.get("metadata", {})
         )
 
+        # Set the name field for workflow spans to match agent_name
+        # This ensures the batch processor can identify workflow spans
+        trace_data.name = operation_name
+
         # Add global tags from config
         trace_data.tags.update(self.config.tags)
 
@@ -313,6 +330,10 @@ class CognitionFlowSDK:
             tags=kwargs.get("tags", {}),
             metadata=kwargs.get("metadata", {})
         )
+
+        # Set the name field for workflow spans to match agent_name
+        # This ensures the batch processor can identify workflow spans
+        trace_data.name = operation_name
 
         # Add global tags from config
         trace_data.tags.update(self.config.tags)

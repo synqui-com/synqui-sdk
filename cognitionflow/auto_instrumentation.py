@@ -9,6 +9,9 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Union, Callable
 from contextlib import contextmanager
+from datetime import datetime
+
+from .models import TraceData
 
 logger = logging.getLogger(__name__)
 
@@ -240,37 +243,95 @@ class LLMCallTracker:
             duration: Call duration in seconds
         """
         try:
-            # Create a trace for the LLM call
-            with self.sdk.span("llm_call") as span:
-                # Set system prompt if detected
-                if system_prompt:
-                    span.system_prompt = system_prompt
-                    span.prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
-                    span.prompt_name = "auto_detected"
-                    span.prompt_version = "v1"
-                
-                # Set model information
-                span.model_name = model
-                span.model_provider = self._detect_provider(model)
-                
-                # Set token information
-                span.input_tokens = input_tokens
-                span.output_tokens = output_tokens
-                span.total_tokens = total_tokens
-                
-                # Set timing information
-                span.metadata["duration"] = duration
-                span.metadata["call_type"] = "llm"
-                
-                # Add tags
-                span.tags.update({
-                    "llm_call": "true",
-                    "model": model,
-                    "provider": span.model_provider
-                })
-                
+            # Embed LLM call details into the current parent span instead of creating a child span
+            from .context import get_current_span
+            parent_span = get_current_span()
+            if not parent_span:
+                # No active span; nothing to annotate
+                logger.debug("🔍 Auto-instrumentation: No active span found to embed LLM call")
+                return
+
+            provider = self._detect_provider(model)
+
+            # Initialize outputs and llm_calls container
+            if parent_span.outputs is None:
+                parent_span.outputs = {}
+            llm_calls = parent_span.outputs.get("llm_calls")
+            if not isinstance(llm_calls, list):
+                llm_calls = []
+                parent_span.outputs["llm_calls"] = llm_calls
+
+            # Build per-call record
+            call_record: Dict[str, Any] = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "status": "success",
+                "model": model,
+                "provider": provider,
+                "input_tokens": int(input_tokens or 0),
+                "output_tokens": int(output_tokens or 0),
+                "total_tokens": int(total_tokens or ((input_tokens or 0) + (output_tokens or 0))),
+                "duration_ms": int(duration * 1000),
+            }
+
+            if system_prompt:
+                call_record["system_prompt"] = system_prompt
+                call_record["prompt_hash"] = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
+
+            llm_calls.append(call_record)
+
+            # Aggregate metrics on parent span
+            try:
+                parent_span.input_tokens = int((parent_span.input_tokens or 0) + (input_tokens or 0))
+                parent_span.output_tokens = int((parent_span.output_tokens or 0) + (output_tokens or 0))
+                parent_span.total_tokens = int((parent_span.total_tokens or 0) + (total_tokens or ((input_tokens or 0) + (output_tokens or 0))))
+            except Exception:
+                # Ensure numeric even if parent had unexpected values
+                parent_span.input_tokens = int(input_tokens or 0)
+                parent_span.output_tokens = int(output_tokens or 0)
+                parent_span.total_tokens = int(total_tokens or ((input_tokens or 0) + (output_tokens or 0)))
+
+            # Track cumulative LLM durations in metadata
+            try:
+                prev = parent_span.metadata.get("llm_duration_ms_total", 0)
+                parent_span.metadata["llm_duration_ms_total"] = int(prev) + int(duration * 1000)
+            except Exception:
+                parent_span.metadata["llm_duration_ms_total"] = int(duration * 1000)
+
+            # Record model details on parent
+            if not parent_span.model_name:
+                parent_span.model_name = model
+                parent_span.model_provider = provider
+            else:
+                if parent_span.model_name != model:
+                    parent_span.tags["multiple_models"] = "true"
+
+            # Optionally set prompt fields on parent only if not already set
+            if system_prompt and not parent_span.system_prompt:
+                parent_span.system_prompt = system_prompt
+                parent_span.prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
+                parent_span.prompt_name = parent_span.prompt_name or "auto_detected"
+                parent_span.prompt_version = parent_span.prompt_version or "v1"
+
+            logger.debug("🔍 Auto-instrumentation: Embedded LLM call into parent span")
+
         except Exception as e:
             logger.debug(f"Failed to track successful LLM call: {e}")
+    
+    def _queue_span(self, span: TraceData) -> None:
+        """Queue a span for transmission to the backend.
+        
+        Args:
+            span: The span to queue
+        """
+        try:
+            # Use the stored SDK reference
+            if self.sdk:
+                self.sdk._send_trace(span)
+                logger.debug(f"🔍 Auto-instrumentation: Queued LLM call span: {span.span_id}")
+            else:
+                logger.debug("🔍 Auto-instrumentation: No SDK instance found, cannot queue span")
+        except Exception as e:
+            logger.debug(f"Failed to queue LLM call span: {e}")
     
     def _track_failed_call(self, system_prompt: Optional[str], model: str,
                           duration: float, error: Exception) -> None:
@@ -283,34 +344,65 @@ class LLMCallTracker:
             error: Exception that occurred
         """
         try:
-            # Create a trace for the failed LLM call
-            with self.sdk.span("llm_call_failed") as span:
-                # Set system prompt if detected
-                if system_prompt:
-                    span.system_prompt = system_prompt
-                    span.prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
-                    span.prompt_name = "auto_detected"
-                    span.prompt_version = "v1"
-                
-                # Set model information
-                span.model_name = model
-                span.model_provider = self._detect_provider(model)
-                
-                # Set error information
-                span.set_error(error)
-                
-                # Set timing information
-                span.metadata["duration"] = duration
-                span.metadata["call_type"] = "llm_failed"
-                
-                # Add tags
-                span.tags.update({
-                    "llm_call": "true",
-                    "llm_failed": "true",
-                    "model": model,
-                    "provider": span.model_provider
-                })
-                
+            # Embed failed LLM call details into the current parent span instead of creating a child span
+            from .context import get_current_span
+            parent_span = get_current_span()
+            if not parent_span:
+                logger.debug("🔍 Auto-instrumentation: No active span found to embed failed LLM call")
+                return
+
+            provider = self._detect_provider(model)
+
+            if parent_span.outputs is None:
+                parent_span.outputs = {}
+            llm_calls = parent_span.outputs.get("llm_calls")
+            if not isinstance(llm_calls, list):
+                llm_calls = []
+                parent_span.outputs["llm_calls"] = llm_calls
+
+            call_record: Dict[str, Any] = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "status": "failed",
+                "model": model,
+                "provider": provider,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "duration_ms": int(duration * 1000),
+                "error": {
+                    "type": type(error).__name__,
+                    "message": str(error),
+                },
+            }
+
+            if system_prompt:
+                call_record["system_prompt"] = system_prompt
+                call_record["prompt_hash"] = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
+
+            llm_calls.append(call_record)
+
+            # Track cumulative LLM durations in metadata
+            try:
+                prev = parent_span.metadata.get("llm_duration_ms_total", 0)
+                parent_span.metadata["llm_duration_ms_total"] = int(prev) + int(duration * 1000)
+            except Exception:
+                parent_span.metadata["llm_duration_ms_total"] = int(duration * 1000)
+
+            # Record model details on parent when missing
+            if not parent_span.model_name:
+                parent_span.model_name = model
+                parent_span.model_provider = provider
+            else:
+                if parent_span.model_name != model:
+                    parent_span.tags["multiple_models"] = "true"
+
+            # Optionally set prompt fields on parent only if not already set
+            if system_prompt and not parent_span.system_prompt:
+                parent_span.system_prompt = system_prompt
+                parent_span.prompt_hash = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()
+                parent_span.prompt_name = parent_span.prompt_name or "auto_detected"
+                parent_span.prompt_version = parent_span.prompt_version or "v1"
+
         except Exception as e:
             logger.debug(f"Failed to track failed LLM call: {e}")
     
@@ -356,55 +448,55 @@ class AutoInstrumentationEngine:
             if "openai" in self.instrumented_libraries:
                 return
             
-            # Handle different OpenAI API versions
-            if hasattr(openai, 'ChatCompletion') and hasattr(openai.ChatCompletion, 'create'):
-                # OpenAI < 1.0.0
-                original_create = openai.ChatCompletion.create
-                
-                def instrumented_create(*args, **kwargs):
-                    start_time = time.time()
-                    messages = kwargs.get('messages', [])
-                    model = kwargs.get('model', 'unknown')
-                    
-                    try:
-                        result = original_create(*args, **kwargs)
-                        self.llm_tracker.track_openai_call(messages, model, result, start_time)
-                        return result
-                    except Exception as e:
-                        self.llm_tracker.track_openai_call(messages, model, None, start_time, e)
-                        raise
-                
-                openai.ChatCompletion.create = instrumented_create
-                self._original_methods["openai"] = original_create
-                
-            elif hasattr(openai, 'OpenAI'):
+            # Handle OpenAI API versions
+            if hasattr(openai, 'OpenAI'):
                 # OpenAI >= 1.0.0 - instrument the client class
-                original_init = openai.OpenAI.__init__
+                # We need to patch the class after it's imported, not during __init__
+                original_openai_class = openai.OpenAI
                 
-                def instrumented_init(self, *args, **kwargs):
-                    original_init(self, *args, **kwargs)
+                # Store reference to engine for access in the instrumented class
+                engine_ref = self
+                
+                class InstrumentedOpenAI(original_openai_class):
+                    def __init__(self, *args, **kwargs):
+                        logger.debug("🔧 InstrumentedOpenAI.__init__ called")
+                        super().__init__(*args, **kwargs)
+                        # Store reference to engine
+                        self._engine = engine_ref
+                        logger.debug(f"🔧 Engine reference stored: {self._engine}")
+                        # Instrument the chat.completions.create method after client creation
+                        self._instrument_chat_completions()
                     
-                    # Store original chat.completions.create method
-                    if hasattr(self, 'chat') and hasattr(self.chat, 'completions'):
-                        original_create = self.chat.completions.create
-                        
-                        def instrumented_create(*args, **kwargs):
-                            start_time = time.time()
-                            messages = kwargs.get('messages', [])
-                            model = kwargs.get('model', 'unknown')
+                    def _instrument_chat_completions(self):
+                        """Instrument the chat.completions.create method."""
+                        if hasattr(self, 'chat') and hasattr(self.chat, 'completions'):
+                            original_create = self.chat.completions.create
                             
-                            try:
-                                result = original_create(*args, **kwargs)
-                                self.llm_tracker.track_openai_call(messages, model, result, start_time)
-                                return result
-                            except Exception as e:
-                                self.llm_tracker.track_openai_call(messages, model, None, start_time, e)
-                                raise
-                        
-                        self.chat.completions.create = instrumented_create
+                            def instrumented_create(*args, **kwargs):
+                                start_time = time.time()
+                                messages = kwargs.get('messages', [])
+                                model = kwargs.get('model', 'unknown')
+                                
+                                logger.debug(f"🔍 Auto-instrumentation: Intercepted OpenAI call - model: {model}, messages: {len(messages)}")
+                                
+                                try:
+                                    result = original_create(*args, **kwargs)
+                                    logger.debug(f"🔍 Auto-instrumentation: OpenAI call successful, tracking...")
+                                    # Access the llm_tracker from the engine instance
+                                    self._engine.llm_tracker.track_openai_call(messages, model, result, start_time)
+                                    return result
+                                except Exception as e:
+                                    logger.debug(f"🔍 Auto-instrumentation: OpenAI call failed, tracking error...")
+                                    self._engine.llm_tracker.track_openai_call(messages, model, None, start_time, e)
+                                    raise
+                            
+                            self.chat.completions.create = instrumented_create
                 
-                openai.OpenAI.__init__ = instrumented_init
-                self._original_methods["openai"] = original_init
+                # Replace the OpenAI class with our instrumented version
+                logger.debug(f"🔧 Replacing OpenAI class: {original_openai_class} -> {InstrumentedOpenAI}")
+                openai.OpenAI = InstrumentedOpenAI
+                self._original_methods["openai"] = original_openai_class
+                logger.debug(f"🔧 OpenAI class replaced. New class: {openai.OpenAI}")
             else:
                 logger.debug("OpenAI library structure not recognized for instrumentation")
                 return
@@ -463,7 +555,8 @@ class AutoInstrumentationEngine:
         try:
             import openai
             if "openai" in self._original_methods:
-                openai.ChatCompletion.create = self._original_methods["openai"]
+                # Restore the original OpenAI class
+                openai.OpenAI = self._original_methods["openai"]
                 self.instrumented_libraries.discard("openai")
         except Exception as e:
             logger.debug(f"Failed to restore OpenAI methods: {e}")

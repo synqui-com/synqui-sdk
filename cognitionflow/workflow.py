@@ -305,6 +305,10 @@ class Workflow:
                 else:
                     result = step.function(step_inputs)
                 
+                # Ensure result is not a coroutine
+                if asyncio.iscoroutine(result):
+                    result = await result
+                
                 # Set output data on the span
                 step_span.outputs = {"result": result}
                 
@@ -427,13 +431,21 @@ class Workflow:
                 # Single dependency - pass result directly
                 dep_name = step.depends_on[0]
                 if dep_name in self.results:
-                    return self.results[dep_name]
+                    result = self.results[dep_name]
+                    # Ensure we're not passing coroutines
+                    if asyncio.iscoroutine(result):
+                        raise RuntimeError(f"Dependency '{dep_name}' returned a coroutine instead of a resolved value")
+                    return result
             else:
                 # Multiple dependencies - pass as dictionary
                 inputs = {}
                 for dep_name in step.depends_on:
                     if dep_name in self.results:
-                        inputs[dep_name] = self.results[dep_name]
+                        result = self.results[dep_name]
+                        # Ensure we're not passing coroutines
+                        if asyncio.iscoroutine(result):
+                            raise RuntimeError(f"Dependency '{dep_name}' returned a coroutine instead of a resolved value")
+                        inputs[dep_name] = result
                 return inputs
         
         # If no dependencies, pass input_data directly

@@ -96,3 +96,7 @@ __all__ = [
     "Workflow",
     "__version__",
 ]
+
+# Register automatic shutdown for the global SDK instance
+import atexit
+atexit.register(lambda: shutdown() if _default_sdk else None)
