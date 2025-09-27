@@ -182,6 +182,12 @@ class CognitionFlowSDK:
                     raise
 
                 finally:
+                    # Ensure parent reference is persisted
+                    if trace_data.parent_span_id:
+                        trace_data.inputs = trace_data.inputs or {}
+                        trace_data.inputs.setdefault("parent_span_id", trace_data.parent_span_id)
+                        trace_data.metadata.setdefault("parent_span_id", trace_data.parent_span_id)
+
                     # Send trace data
                     self._send_trace(trace_data)
 
@@ -245,6 +251,12 @@ class CognitionFlowSDK:
                     raise
 
                 finally:
+                    # Ensure parent reference is persisted
+                    if trace_data.parent_span_id:
+                        trace_data.inputs = trace_data.inputs or {}
+                        trace_data.inputs.setdefault("parent_span_id", trace_data.parent_span_id)
+                        trace_data.metadata.setdefault("parent_span_id", trace_data.parent_span_id)
+
                     # Send trace data
                     self._send_trace(trace_data)
 

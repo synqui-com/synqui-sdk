@@ -82,6 +82,11 @@ class TraceContext:
             **kwargs
         )
 
+        if parent_span_id:
+            span.inputs = span.inputs or {}
+            span.inputs.setdefault("parent_span_id", parent_span_id)
+            span.metadata.setdefault("parent_span_id", parent_span_id)
+
         # If this is the first span in a trace, it becomes the trace ID
         if not trace_id:
             span.trace_id = span.span_id
