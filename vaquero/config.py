@@ -1,4 +1,4 @@
-"""Configuration management for CognitionFlow SDK."""
+"""Configuration management for Vaquero SDK."""
 
 import os
 from dataclasses import dataclass, field
@@ -11,13 +11,13 @@ from urllib.error import URLError, HTTPError
 class SDKConfig:
     """SDK configuration settings.
 
-    This class contains all the configuration options for the CognitionFlow SDK.
+    This class contains all the configuration options for the Vaquero SDK.
     It supports environment variable configuration and provides sensible defaults.
 
     Args:
-        api_key: API key for authentication with CognitionFlow
+        api_key: API key for authentication with Vaquero
         project_id: Project ID to associate traces with
-        endpoint: CognitionFlow API endpoint URL
+        endpoint: Vaquero API endpoint URL
         batch_size: Number of events to batch before sending
         flush_interval: Interval in seconds to flush pending events
         max_retries: Maximum number of retry attempts for failed requests
@@ -36,7 +36,7 @@ class SDKConfig:
 
     api_key: str
     project_id: str
-    endpoint: str = "https://api.cognitionflow.com"
+    endpoint: str = "https://api.vaquero.com"
     batch_size: int = 100
     flush_interval: float = 5.0
     max_retries: int = 3
@@ -74,21 +74,21 @@ def configure_from_env() -> SDKConfig:
     """Configure SDK from environment variables.
 
     Environment variables:
-        COGNITIONFLOW_API_KEY: API key
-        COGNITIONFLOW_PROJECT_ID: Project ID
-        COGNITIONFLOW_ENDPOINT: API endpoint URL
-        COGNITIONFLOW_BATCH_SIZE: Batch size for events
-        COGNITIONFLOW_FLUSH_INTERVAL: Flush interval in seconds
-        COGNITIONFLOW_MAX_RETRIES: Maximum retry attempts
-        COGNITIONFLOW_TIMEOUT: Request timeout in seconds
-        COGNITIONFLOW_CAPTURE_INPUTS: Capture function inputs (true/false)
-        COGNITIONFLOW_CAPTURE_OUTPUTS: Capture function outputs (true/false)
-        COGNITIONFLOW_CAPTURE_ERRORS: Capture error information (true/false)
-        COGNITIONFLOW_CAPTURE_TOKENS: Capture token counts (true/false)
-        COGNITIONFLOW_ENVIRONMENT: Environment name
-        COGNITIONFLOW_DEBUG: Enable debug logging (true/false)
-        COGNITIONFLOW_ENABLED: Enable SDK (true/false)
-        COGNITIONFLOW_TAGS: Global tags as JSON string
+        VAQUERO_API_KEY: API key
+        VAQUERO_PROJECT_ID: Project ID
+        VAQUERO_ENDPOINT: API endpoint URL
+        VAQUERO_BATCH_SIZE: Batch size for events
+        VAQUERO_FLUSH_INTERVAL: Flush interval in seconds
+        VAQUERO_MAX_RETRIES: Maximum retry attempts
+        VAQUERO_TIMEOUT: Request timeout in seconds
+        VAQUERO_CAPTURE_INPUTS: Capture function inputs (true/false)
+        VAQUERO_CAPTURE_OUTPUTS: Capture function outputs (true/false)
+        VAQUERO_CAPTURE_ERRORS: Capture error information (true/false)
+        VAQUERO_CAPTURE_TOKENS: Capture token counts (true/false)
+        VAQUERO_ENVIRONMENT: Environment name
+        VAQUERO_DEBUG: Enable debug logging (true/false)
+        VAQUERO_ENABLED: Enable SDK (true/false)
+        VAQUERO_TAGS: Global tags as JSON string
 
     Returns:
         SDKConfig instance configured from environment variables
@@ -109,24 +109,24 @@ def configure_from_env() -> SDKConfig:
             return {}
 
     return SDKConfig(
-        api_key=os.getenv("COGNITIONFLOW_API_KEY", ""),
-        project_id=os.getenv("COGNITIONFLOW_PROJECT_ID", ""),
-        endpoint=os.getenv("COGNITIONFLOW_ENDPOINT", "https://api.cognitionflow.com"),
-        batch_size=int(os.getenv("COGNITIONFLOW_BATCH_SIZE", "100")),
-        flush_interval=float(os.getenv("COGNITIONFLOW_FLUSH_INTERVAL", "5.0")),
-        max_retries=int(os.getenv("COGNITIONFLOW_MAX_RETRIES", "3")),
-        timeout=float(os.getenv("COGNITIONFLOW_TIMEOUT", "30.0")),
-        capture_inputs=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_INPUTS", "true")),
-        capture_outputs=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_OUTPUTS", "true")),
-        capture_errors=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_ERRORS", "true")),
-        capture_tokens=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_TOKENS", "true")),
-        environment=os.getenv("COGNITIONFLOW_ENVIRONMENT", "development"),
-        debug=str_to_bool(os.getenv("COGNITIONFLOW_DEBUG", "false")),
-        enabled=str_to_bool(os.getenv("COGNITIONFLOW_ENABLED", "true")),
-        tags=parse_tags(os.getenv("COGNITIONFLOW_TAGS", "{}")),
-        auto_instrument_llm=str_to_bool(os.getenv("COGNITIONFLOW_AUTO_INSTRUMENT_LLM", "true")),
-        capture_system_prompts=str_to_bool(os.getenv("COGNITIONFLOW_CAPTURE_SYSTEM_PROMPTS", "true")),
-        detect_agent_frameworks=str_to_bool(os.getenv("COGNITIONFLOW_DETECT_AGENT_FRAMEWORKS", "true"))
+        api_key=os.getenv("VAQUERO_API_KEY", ""),
+        project_id=os.getenv("VAQUERO_PROJECT_ID", ""),
+        endpoint=os.getenv("VAQUERO_ENDPOINT", "https://api.vaquero.com"),
+        batch_size=int(os.getenv("VAQUERO_BATCH_SIZE", "100")),
+        flush_interval=float(os.getenv("VAQUERO_FLUSH_INTERVAL", "5.0")),
+        max_retries=int(os.getenv("VAQUERO_MAX_RETRIES", "3")),
+        timeout=float(os.getenv("VAQUERO_TIMEOUT", "30.0")),
+        capture_inputs=str_to_bool(os.getenv("VAQUERO_CAPTURE_INPUTS", "true")),
+        capture_outputs=str_to_bool(os.getenv("VAQUERO_CAPTURE_OUTPUTS", "true")),
+        capture_errors=str_to_bool(os.getenv("VAQUERO_CAPTURE_ERRORS", "true")),
+        capture_tokens=str_to_bool(os.getenv("VAQUERO_CAPTURE_TOKENS", "true")),
+        environment=os.getenv("VAQUERO_ENVIRONMENT", "development"),
+        debug=str_to_bool(os.getenv("VAQUERO_DEBUG", "false")),
+        enabled=str_to_bool(os.getenv("VAQUERO_ENABLED", "true")),
+        tags=parse_tags(os.getenv("VAQUERO_TAGS", "{}")),
+        auto_instrument_llm=str_to_bool(os.getenv("VAQUERO_AUTO_INSTRUMENT_LLM", "true")),
+        capture_system_prompts=str_to_bool(os.getenv("VAQUERO_CAPTURE_SYSTEM_PROMPTS", "true")),
+        detect_agent_frameworks=str_to_bool(os.getenv("VAQUERO_DETECT_AGENT_FRAMEWORKS", "true"))
     )
 
 
@@ -150,8 +150,8 @@ def configure(
     capture_system_prompts: Optional[bool] = None,
     detect_agent_frameworks: Optional[bool] = None,
     **kwargs
-) -> "CognitionFlowSDK":
-    """Configure the CognitionFlow SDK.
+) -> "VaqueroSDK":
+    """Configure the Vaquero SDK.
 
     This function creates a new SDK configuration and initializes the default
     SDK instance. It first loads configuration from environment variables,
@@ -160,7 +160,7 @@ def configure(
     Args:
         api_key: API key for authentication
         project_id: Project ID to associate traces with
-        endpoint: CognitionFlow API endpoint URL
+        endpoint: Vaquero API endpoint URL
         batch_size: Number of events to batch before sending
         flush_interval: Interval in seconds to flush pending events
         max_retries: Maximum number of retry attempts
@@ -221,7 +221,7 @@ def configure(
         config.detect_agent_frameworks = detect_agent_frameworks
 
     # Auto-provision project if enabled and missing
-    auto_provision = os.getenv("COGNITIONFLOW_AUTO_PROVISION_PROJECT", "true").lower() == "true"
+    auto_provision = os.getenv("VAQUERO_AUTO_PROVISION_PROJECT", "true").lower() == "true"
     if auto_provision and config.enabled and config.api_key and not config.project_id:
         resolved = _resolve_or_create_project(config.endpoint, config.api_key)
         if resolved:
@@ -229,12 +229,12 @@ def configure(
 
     # Create and set the default SDK instance
     from . import set_default_sdk
-    from .sdk import CognitionFlowSDK
-    sdk = CognitionFlowSDK(config)
+    from .sdk import VaqueroSDK
+    sdk = VaqueroSDK(config)
     set_default_sdk(sdk)
     # Also set the global instance for workflow API (use the same instance)
-    import cognitionflow.sdk
-    cognitionflow.sdk._sdk_instance = sdk
+    import vaquero.sdk
+    vaquero.sdk._sdk_instance = sdk
 
     return sdk
 

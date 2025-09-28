@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setup script for CognitionFlow SDK.
+"""Setup script for Vaquero SDK.
 
 This is a minimal setup.py for compatibility.
 The actual configuration is in pyproject.toml.

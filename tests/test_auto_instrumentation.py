@@ -3,9 +3,9 @@
 import pytest
 import time
 from unittest.mock import Mock, patch, MagicMock
-from cognitionflow.config import SDKConfig
-from cognitionflow.sdk import CognitionFlowSDK
-from cognitionflow.auto_instrumentation import SystemPromptDetector, LLMCallTracker, AutoInstrumentationEngine
+from vaquero.config import SDKConfig
+from vaquero.sdk import VaqueroSDK
+from vaquero.auto_instrumentation import SystemPromptDetector, LLMCallTracker, AutoInstrumentationEngine
 
 
 class TestSystemPromptDetector:
@@ -149,7 +149,7 @@ class TestAutoInstrumentationEngine:
         assert engine.instrumented_libraries == set()
         assert isinstance(engine.llm_tracker, LLMCallTracker)
     
-    @patch('cognitionflow.auto_instrumentation.openai')
+    @patch('vaquero.auto_instrumentation.openai')
     def test_instrument_openai(self, mock_openai):
         """Test OpenAI instrumentation."""
         sdk = Mock()
@@ -165,7 +165,7 @@ class TestAutoInstrumentationEngine:
         assert "openai" in engine.instrumented_libraries
         assert "openai" in engine._original_methods
     
-    @patch('cognitionflow.auto_instrumentation.anthropic')
+    @patch('vaquero.auto_instrumentation.anthropic')
     def test_instrument_anthropic(self, mock_anthropic):
         """Test Anthropic instrumentation."""
         sdk = Mock()
@@ -206,11 +206,11 @@ class TestSDKIntegration:
             capture_system_prompts=True
         )
         
-        with patch('cognitionflow.auto_instrumentation.AutoInstrumentationEngine') as mock_engine_class:
+        with patch('vaquero.auto_instrumentation.AutoInstrumentationEngine') as mock_engine_class:
             mock_engine = Mock()
             mock_engine_class.return_value = mock_engine
             
-            sdk = CognitionFlowSDK(config)
+            sdk = VaqueroSDK(config)
             
             # Verify auto-instrumentation was initialized
             mock_engine_class.assert_called_once_with(sdk)
@@ -224,8 +224,8 @@ class TestSDKIntegration:
             auto_instrument_llm=False
         )
         
-        with patch('cognitionflow.auto_instrumentation.AutoInstrumentationEngine') as mock_engine_class:
-            sdk = CognitionFlowSDK(config)
+        with patch('vaquero.auto_instrumentation.AutoInstrumentationEngine') as mock_engine_class:
+            sdk = VaqueroSDK(config)
             
             # Verify auto-instrumentation was not initialized
             mock_engine_class.assert_not_called()
@@ -238,11 +238,11 @@ class TestSDKIntegration:
             auto_instrument_llm=True
         )
         
-        with patch('cognitionflow.auto_instrumentation.AutoInstrumentationEngine') as mock_engine_class:
+        with patch('vaquero.auto_instrumentation.AutoInstrumentationEngine') as mock_engine_class:
             mock_engine = Mock()
             mock_engine_class.return_value = mock_engine
             
-            sdk = CognitionFlowSDK(config)
+            sdk = VaqueroSDK(config)
             sdk.shutdown()
             
             # Verify auto-instrumentation was stopped

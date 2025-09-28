@@ -3,18 +3,18 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cognitionflow-sdk"
+name = "vaquero-sdk"
 version = "0.1.0"
-description = "Python SDK for CognitionFlow observability and tracing platform"
+description = "Python SDK for Vaquero observability and tracing platform"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "CognitionFlow Team", email = "team@cognitionflow.com"}
+    {name = "Vaquero Team", email = "team@vaquero.com"}
 ]
 maintainers = [
-    {name = "CognitionFlow Team", email = "team@cognitionflow.com"}
+    {name = "Vaquero Team", email = "team@vaquero.com"}
 ]
-keywords = ["observability", "tracing", "monitoring", "cognitionflow", "telemetry"]
+keywords = ["observability", "tracing", "monitoring", "vaquero", "telemetry"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -50,22 +50,22 @@ monitoring = [
     "psutil>=5.8.0",
 ]
 all = [
-    "cognitionflow-sdk[dev,monitoring]"
+    "vaquero-sdk[dev,monitoring]"
 ]
 
 [project.urls]
-Homepage = "https://cognitionflow.com"
-Documentation = "https://docs.cognitionflow.com"
-Repository = "https://github.com/cognitionflow/cognitionflow-sdk"
-Changelog = "https://github.com/cognitionflow/cognitionflow-sdk/blob/main/CHANGELOG.md"
-"Bug Reports" = "https://github.com/cognitionflow/cognitionflow-sdk/issues"
+Homepage = "https://vaquero.com"
+Documentation = "https://docs.vaquero.com"
+Repository = "https://github.com/vaquero/vaquero-sdk"
+Changelog = "https://github.com/vaquero/vaquero-sdk/blob/main/CHANGELOG.md"
+"Bug Reports" = "https://github.com/vaquero/vaquero-sdk/issues"
 
 [tool.setuptools.packages.find]
-include = ["cognitionflow*"]
+include = ["vaquero*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-cognitionflow = ["py.typed"]
+vaquero = ["py.typed"]
 
 [tool.black]
 line-length = 100
@@ -129,7 +129,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["cognitionflow"]
+source = ["vaquero"]
 omit = [
     "*/tests/*",
     "*/test_*",

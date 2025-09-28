@@ -1,54 +1,54 @@
-"""CognitionFlow Python SDK for observability and tracing.
+"""Vaquero Python SDK for observability and tracing.
 
 This SDK provides easy instrumentation for Python applications to capture
-trace data and send it to the CognitionFlow platform.
+trace data and send it to the Vaquero platform.
 
 Basic Usage:
-    import cognitionflow
+    import vaquero
 
     # Configure the SDK
-    cognitionflow.configure(
+    vaquero.configure(
         api_key="your-api-key",
         project_id="your-project-id"
     )
 
     # Trace a function
-    @cognitionflow.trace(agent_name="data_processor")
+    @vaquero.trace(agent_name="data_processor")
     def process_data(data):
         return {"processed": data}
 
 Advanced Usage:
     # Manual span creation
-    with cognitionflow.span("custom_operation") as span:
+    with vaquero.span("custom_operation") as span:
         span.set_attribute("key", "value")
         # Your code here
 """
 
 __version__ = "0.1.0"
-__author__ = "CognitionFlow Team"
-__email__ = "team@cognitionflow.com"
+__author__ = "Vaquero Team"
+__email__ = "team@vaquero.com"
 
 from typing import Optional
 
-from .sdk import CognitionFlowSDK
+from .sdk import VaqueroSDK
 from .config import SDKConfig, configure, configure_from_env
 from .context import get_current_span
 from .decorators import trace as _trace_decorator
 from .workflow import workflow, Workflow
 
 # Default SDK instance
-_default_sdk: Optional[CognitionFlowSDK] = None
+_default_sdk: Optional[VaqueroSDK] = None
 
 
-def get_default_sdk() -> CognitionFlowSDK:
+def get_default_sdk() -> VaqueroSDK:
     """Get the default SDK instance."""
     global _default_sdk
     if _default_sdk is None:
-        raise RuntimeError("SDK not configured. Call cognitionflow.configure() first.")
+        raise RuntimeError("SDK not configured. Call vaquero.configure() first.")
     return _default_sdk
 
 
-def set_default_sdk(sdk: CognitionFlowSDK):
+def set_default_sdk(sdk: VaqueroSDK):
     """Set the default SDK instance."""
     global _default_sdk
     _default_sdk = sdk
@@ -92,7 +92,7 @@ __all__ = [
     "shutdown",
     "get_current_span",
     "SDKConfig",
-    "CognitionFlowSDK",
+    "VaqueroSDK",
     "Workflow",
     "__version__",
 ]

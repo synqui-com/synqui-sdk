@@ -1,4 +1,4 @@
-"""Automatic LLM instrumentation for CognitionFlow SDK.
+"""Automatic LLM instrumentation for Vaquero SDK.
 
 This module provides automatic detection and instrumentation of LLM calls,
 system prompts, and agent frameworks to minimize user setup.
@@ -138,7 +138,7 @@ class LLMCallTracker:
         """Initialize with SDK instance for trace creation.
         
         Args:
-            sdk_instance: CognitionFlowSDK instance
+            sdk_instance: VaqueroSDK instance
         """
         self.sdk = sdk_instance
         self.system_prompt_detector = SystemPromptDetector()
@@ -433,7 +433,7 @@ class AutoInstrumentationEngine:
         """Initialize with SDK instance.
         
         Args:
-            sdk_instance: CognitionFlowSDK instance
+            sdk_instance: VaqueroSDK instance
         """
         self.sdk = sdk_instance
         self.llm_tracker = LLMCallTracker(sdk_instance)

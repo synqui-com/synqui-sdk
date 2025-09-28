@@ -1,4 +1,4 @@
-"""Workflow orchestration for CognitionFlow SDK.
+"""Workflow orchestration for Vaquero SDK.
 
 This module provides high-level workflow APIs that automatically handle
 span hierarchy, dependency tracking, and graph construction.
@@ -45,7 +45,7 @@ class Workflow:
     dependency resolution, span hierarchy creation, and graph construction.
     
     Example:
-        workflow = cognitionflow.workflow("data_processing")
+        workflow = vaquero.workflow("data_processing")
         workflow.add_step("clean", clean_data)
         workflow.add_step("analyze", analyze_data, depends_on=["clean"])
         workflow.add_step("report", generate_report, depends_on=["analyze"])
@@ -234,7 +234,7 @@ class Workflow:
         
         sdk = get_current_sdk()
         if not sdk:
-            raise RuntimeError("No SDK instance found. Call cognitionflow.initialize() first.")
+            raise RuntimeError("No SDK instance found. Call vaquero.initialize() first.")
         
         return sdk.span(f"workflow_{self.name}")
     

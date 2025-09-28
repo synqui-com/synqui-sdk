@@ -1,4 +1,4 @@
-"""Main CognitionFlow SDK implementation."""
+"""Main Vaquero SDK implementation."""
 
 import asyncio
 import functools
@@ -21,15 +21,15 @@ from .auto_instrumentation import AutoInstrumentationEngine
 logger = logging.getLogger(__name__)
 
 
-class CognitionFlowSDK:
-    """Main SDK class for CognitionFlow instrumentation.
+class VaqueroSDK:
+    """Main SDK class for Vaquero instrumentation.
 
     This class provides the core functionality for tracing function calls
-    and sending trace data to the CognitionFlow platform.
+    and sending trace data to the Vaquero platform.
 
     Example:
         config = SDKConfig(api_key="your-key", project_id="your-project")
-        sdk = CognitionFlowSDK(config)
+        sdk = VaqueroSDK(config)
 
         @sdk.trace("my_agent")
         def my_function():
@@ -65,7 +65,7 @@ class CognitionFlowSDK:
         if self._enabled:
             atexit.register(self.shutdown)
 
-        logger.info(f"CognitionFlow SDK initialized (enabled={self._enabled})")
+        logger.info(f"Vaquero SDK initialized (enabled={self._enabled})")
 
     def _start_batch_processor(self):
         """Start the background batch processor."""
@@ -529,10 +529,10 @@ class CognitionFlowSDK:
 
 
 # Global SDK instance
-_sdk_instance: Optional[CognitionFlowSDK] = None
+_sdk_instance: Optional[VaqueroSDK] = None
 
 
-def get_current_sdk() -> Optional[CognitionFlowSDK]:
+def get_current_sdk() -> Optional[VaqueroSDK]:
     """Get the current global SDK instance.
     
     Returns:
@@ -541,7 +541,7 @@ def get_current_sdk() -> Optional[CognitionFlowSDK]:
     return _sdk_instance
 
 
-def initialize(config: SDKConfig) -> CognitionFlowSDK:
+def initialize(config: SDKConfig) -> VaqueroSDK:
     """Initialize the global SDK instance.
     
     Args:
@@ -551,5 +551,5 @@ def initialize(config: SDKConfig) -> CognitionFlowSDK:
         Initialized SDK instance
     """
     global _sdk_instance
-    _sdk_instance = CognitionFlowSDK(config)
+    _sdk_instance = VaqueroSDK(config)
     return _sdk_instance

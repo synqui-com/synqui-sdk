@@ -22,7 +22,7 @@ class BatchProcessor:
 
     This class runs in a background thread and periodically collects
     trace events from a queue, batches them, and sends them to the
-    CognitionFlow API using asynchronous HTTP requests.
+    Vaquero API using asynchronous HTTP requests.
 
     Features:
     - Automatic batching based on size and time intervals
@@ -31,7 +31,7 @@ class BatchProcessor:
     - Memory-efficient queue management
     """
 
-    def __init__(self, sdk: 'CognitionFlowSDK'):
+    def __init__(self, sdk: 'VaqueroSDK'):
         """Initialize the batch processor.
 
         Args:
@@ -57,7 +57,7 @@ class BatchProcessor:
             return
 
         self._running = True
-        self._thread = Thread(target=self._process_loop, daemon=True, name="CognitionFlow-BatchProcessor")
+        self._thread = Thread(target=self._process_loop, daemon=True, name="Vaquero-BatchProcessor")
         self._thread.start()
         logger.info("Batch processor started")
 
@@ -227,7 +227,7 @@ class BatchProcessor:
             target=self._send_batch_sync,
             args=(batch_to_send,),
             daemon=True,
-            name="CognitionFlow-BatchSender"
+            name="Vaquero-BatchSender"
         )
         send_thread.start()
 
@@ -718,7 +718,7 @@ class BatchProcessor:
         headers = {
             "Authorization": f"Bearer {self.config.api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "CognitionFlow-Python-SDK/0.1.0"
+            "User-Agent": "Vaquero-Python-SDK/0.1.0"
         }
 
         # Convert datetime strings to datetime objects for backend compatibility
@@ -880,7 +880,7 @@ class BatchProcessor:
                 target=self._send_batch_sync,
                 args=(failed_batch["batch"],),
                 daemon=True,
-                name="CognitionFlow-BatchRetry"
+                name="Vaquero-BatchRetry"
             )
             send_thread.start()
 
