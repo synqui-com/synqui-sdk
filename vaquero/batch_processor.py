@@ -280,13 +280,14 @@ class BatchProcessor:
                     continue
 
                 # Debug logging for workflow spans
-                if item.get("name") == "linear_workflow" or item.get("agent_name") == "linear_workflow":
-                    print(f"🔍 Workflow span: trace_id={tid}, parent_span_id={item.get('parent_span_id')}, span_id={item.get('span_id')}")
-                    print(f"🔍 Workflow span details: {item}")
-                elif item.get("name"):
-                    print(f"🔍 Regular span: {item.get('name')}")
-                elif item.get("agent_name"):
-                    print(f"🔍 Agent span: {item.get('agent_name')}")
+                if self.config.debug:
+                    if item.get("name") == "linear_workflow" or item.get("agent_name") == "linear_workflow":
+                        print(f"🔍 Workflow span: trace_id={tid}, parent_span_id={item.get('parent_span_id')}, span_id={item.get('span_id')}")
+                        print(f"🔍 Workflow span details: {item}")
+                    elif item.get("name"):
+                        print(f"🔍 Regular span: {item.get('name')}")
+                    elif item.get("agent_name"):
+                        print(f"🔍 Agent span: {item.get('agent_name')}")
 
                 self._pending_by_trace.setdefault(tid, []).append(item)
 
@@ -325,7 +326,8 @@ class BatchProcessor:
 
             for tid in ready_trace_ids:
                 items = self._pending_by_trace.pop(tid, [])
-                print(f"🔍 Processing trace {tid} with {len(items)} items")
+                if self.config.debug:
+                    print(f"🔍 Processing trace {tid} with {len(items)} items")
 
                 # Split into one trace (root) and agents (children)
                 # Root can be either: no parent_span_id OR a main workflow span
@@ -344,19 +346,21 @@ class BatchProcessor:
                     )
                 ]
 
-                print(f"🔍 Trace {tid}: {len(root_items)} root items, {len(child_items)} child items")
+                if self.config.debug:
+                    print(f"🔍 Trace {tid}: {len(root_items)} root items, {len(child_items)} child items")
 
                 # Debug: Show what items we have
-                for i, item in enumerate(items):
-                    span_id = item.get("span_id")
-                    name = item.get("agent_name") or item.get("function_name") or item.get("name")
-                    parent_span_id = item.get("parent_span_id")
-                    print(f"   Item {i}: span_id={span_id}, name={name}, parent_span_id={parent_span_id}")
+                if self.config.debug:
+                    for i, item in enumerate(items):
+                        span_id = item.get("span_id")
+                        name = item.get("agent_name") or item.get("function_name") or item.get("name")
+                        parent_span_id = item.get("parent_span_id")
+                        print(f"   Item {i}: span_id={span_id}, name={name}, parent_span_id={parent_span_id}")
 
                 # Debug: Check for duplicates before processing
                 span_ids = [item.get("span_id") for item in items]
                 duplicates = [x for x in span_ids if span_ids.count(x) > 1]
-                if duplicates:
+                if duplicates and self.config.debug:
                     print(f"🔍 DUPLICATES FOUND in items for trace {tid}: {set(duplicates)}")
 
                 # First, process child items and mark their span_ids as processed
@@ -387,7 +391,7 @@ class BatchProcessor:
                         deduplicated_items.append(item)
 
                 # Log if duplicates were found
-                if len(deduplicated_items) < len(items):
+                if len(deduplicated_items) < len(items) and self.config.debug:
                     print(f"🔍 DEBUG: Removed {len(items) - len(deduplicated_items)} duplicate spans for trace_id {tid}")
                     for item in items:
                         if item.get("span_id") in seen_span_ids:
@@ -475,7 +479,8 @@ class BatchProcessor:
                     item.get("agent_name") in workflow_names
                 ]
                 # Don't extend child_items with workflow items to prevent duplication
-                print(f"🔍 Found {len(workflow_items)} workflow items (will be processed as root items only)")
+                if self.config.debug:
+                    print(f"🔍 Found {len(workflow_items)} workflow items (will be processed as root items only)")
 
                 # Create agents from child items with unique agent IDs
                 for child in child_items:
@@ -499,7 +504,8 @@ class BatchProcessor:
                         agent_id_counters[trace_id][agent_name] += 1
                         # Create unique agent ID by appending counter
                         agent_id = f"{span_id}_{agent_id_counters[trace_id][agent_name]}"
-                        print(f"🔍 DEBUG: Created unique agent_id {agent_id} for duplicate {agent_name} in trace {trace_id}")
+                        if self.config.debug:
+                            print(f"🔍 DEBUG: Created unique agent_id {agent_id} for duplicate {agent_name} in trace {trace_id}")
                     else:
                         agent_id_counters[trace_id][agent_name] = 0
                         agent_id = span_id
@@ -556,7 +562,8 @@ class BatchProcessor:
                                 "dependency_type": "calls"
                             }
                             dependencies.append(dependency)
-                            print(f"🔗 Created dependency: {parent_agent['name']} → {agent_data['name']}")
+                            if self.config.debug:
+                                print(f"🔗 Created dependency: {parent_agent['name']} → {agent_data['name']}")
 
                     # Also add remaining root items as agents (for nested root spans)
                     # Skip workflow items as they should only be processed once as root items
@@ -565,13 +572,15 @@ class BatchProcessor:
 
                         # Skip if this span_id has already been processed
                         if span_id in processed_span_ids:
-                            print(f"🔍 DEBUG: Skipping duplicate span_id {span_id} in root_items")
+                            if self.config.debug:
+                                print(f"🔍 DEBUG: Skipping duplicate span_id {span_id} in root_items")
                             continue
 
                         # Skip workflow items to prevent duplication
                         item_name = item.get("agent_name") or item.get("function_name") or item.get("name")
                         if item_name in workflow_names:
-                            print(f"🔍 DEBUG: Skipping workflow item {span_id} in root_items (already handled)")
+                            if self.config.debug:
+                                print(f"🔍 DEBUG: Skipping workflow item {span_id} in root_items (already handled)")
                             continue
 
                         processed_span_ids.add(span_id)
@@ -585,7 +594,8 @@ class BatchProcessor:
                         if agent_name in agent_id_counters[trace_id]:
                             agent_id_counters[trace_id][agent_name] += 1
                             agent_id = f"{span_id}_{agent_id_counters[trace_id][agent_name]}"
-                            print(f"🔍 DEBUG: Created unique agent_id {agent_id} for root item {agent_name} in trace {trace_id}")
+                            if self.config.debug:
+                                print(f"🔍 DEBUG: Created unique agent_id {agent_id} for root item {agent_name} in trace {trace_id}")
                         else:
                             agent_id_counters[trace_id][agent_name] = 0
                             agent_id = span_id
@@ -626,10 +636,11 @@ class BatchProcessor:
 
                 # Debug: print what we found for this trace group
                 workflow_roots = [it for it in root_items if it.get("name") == "linear_workflow" or it.get("agent_name") == "linear_workflow"]
-                if workflow_roots:
-                    print(f"🔍 Found workflow root: {workflow_roots[0].get('name')} with parent_span_id={workflow_roots[0].get('parent_span_id')}")
-                else:
-                    print(f"🔍 No workflow root found in trace group {tid}, using first root item")
+                if self.config.debug:
+                    if workflow_roots:
+                        print(f"🔍 Found workflow root: {workflow_roots[0].get('name')} with parent_span_id={workflow_roots[0].get('parent_span_id')}")
+                    else:
+                        print(f"🔍 No workflow root found in trace group {tid}, using first root item")
 
                 if not root_items:
                     # Should not happen due to ready selection, but guard
@@ -788,15 +799,17 @@ class BatchProcessor:
                 print(f"🔍 WARNING: Duplicate agent IDs found: {duplicates_found}")
             else:
                 logger.debug("✅ All agent IDs are unique within traces")
-                print("✅ Agent ID uniqueness check passed - no duplicates found")
+                if self.config.debug:
+                    print("✅ Agent ID uniqueness check passed - no duplicates found")
 
             # Log agent ID distribution summary
-            print(f"🔍 AGENT ID SUMMARY:")
-            for trace_id, agent_counts in trace_agent_counts.items():
-                print(f"   Trace {trace_id}: {len(agent_counts)} unique agents")
-                for agent_id, count in agent_counts.items():
-                    print(f"     - {agent_id}: {count}")
-            print(f"🔍 Total agents: {len(agents)}")
+            if self.config.debug:
+                print(f"🔍 AGENT ID SUMMARY:")
+                for trace_id, agent_counts in trace_agent_counts.items():
+                    print(f"   Trace {trace_id}: {len(agent_counts)} unique agents")
+                    for agent_id, count in agent_counts.items():
+                        print(f"     - {agent_id}: {count}")
+                print(f"🔍 Total agents: {len(agents)}")
 
         if traces:
             logger.debug(f"🔍 First trace keys: {list(traces[0].keys())}")
@@ -804,8 +817,9 @@ class BatchProcessor:
         if agents:
             logger.debug(f"🔍 First agent keys: {list(agents[0].keys())}")
             # Print the payload to stderr for debugging
-            import sys
-            print(f"🔍 DEBUG: Payload being sent: {payload}", file=sys.stderr)
+            if self.config.debug:
+                import sys
+                print(f"🔍 DEBUG: Payload being sent: {payload}", file=sys.stderr)
         logger.debug(f"🔍 Batch processor: First trace keys: {list(traces[0].keys()) if traces else 'No traces'}")
         if traces:
             logger.debug(f"🔍 Batch processor: First trace start_time: {traces[0].get('start_time')}")
@@ -823,7 +837,8 @@ class BatchProcessor:
                 resp = requests.post(url, headers=headers, json=payload, timeout=self.config.timeout)
                 if resp.status_code < 400:
                     logger.debug(f"Successfully sent grouped payload with {len(traces)} traces and {len(agents)} agents")
-                    print(f"🔍 Batch processor: Successfully sent batch of {len(batch)} events")
+                    if self.config.debug:
+                        print(f"🔍 Batch processor: Successfully sent batch of {len(batch)} events")
                     self._consecutive_failures = 0
                     return
                 else:

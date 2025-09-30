@@ -445,8 +445,9 @@ class VaqueroSDK:
             return
 
         try:
-            # Add environment information
+            # Add environment and mode information
             trace_data.metadata["environment"] = self.config.environment
+            trace_data.metadata["mode"] = self.config.mode
             trace_data.metadata["sdk_version"] = "0.1.0"
 
             # Queue the trace data

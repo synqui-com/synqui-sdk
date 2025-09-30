@@ -32,6 +32,7 @@ class SDKConfig:
         auto_instrument_llm: Whether to automatically instrument LLM libraries
         capture_system_prompts: Whether to automatically capture system prompts
         detect_agent_frameworks: Whether to auto-detect agent frameworks
+        mode: Operating mode ("development" or "production")
     """
 
     api_key: str
@@ -52,6 +53,7 @@ class SDKConfig:
     auto_instrument_llm: bool = True
     capture_system_prompts: bool = True
     detect_agent_frameworks: bool = True
+    mode: str = "development"
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -68,6 +70,8 @@ class SDKConfig:
             raise ValueError("max_retries cannot be negative")
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")
+        if self.mode not in ["development", "production"]:
+            raise ValueError("mode must be either 'development' or 'production'")
 
 
 def configure_from_env() -> SDKConfig:
@@ -126,7 +130,8 @@ def configure_from_env() -> SDKConfig:
         tags=parse_tags(os.getenv("VAQUERO_TAGS", "{}")),
         auto_instrument_llm=str_to_bool(os.getenv("VAQUERO_AUTO_INSTRUMENT_LLM", "true")),
         capture_system_prompts=str_to_bool(os.getenv("VAQUERO_CAPTURE_SYSTEM_PROMPTS", "true")),
-        detect_agent_frameworks=str_to_bool(os.getenv("VAQUERO_DETECT_AGENT_FRAMEWORKS", "true"))
+        detect_agent_frameworks=str_to_bool(os.getenv("VAQUERO_DETECT_AGENT_FRAMEWORKS", "true")),
+        mode=os.getenv("VAQUERO_MODE", "development")
     )
 
 
@@ -149,6 +154,7 @@ def configure(
     auto_instrument_llm: Optional[bool] = None,
     capture_system_prompts: Optional[bool] = None,
     detect_agent_frameworks: Optional[bool] = None,
+    mode: Optional[str] = None,
     **kwargs
 ) -> "VaqueroSDK":
     """Configure the Vaquero SDK.
@@ -219,6 +225,8 @@ def configure(
         config.capture_system_prompts = capture_system_prompts
     if detect_agent_frameworks is not None:
         config.detect_agent_frameworks = detect_agent_frameworks
+    if mode is not None:
+        config.mode = mode
 
     # Auto-provision project if enabled and missing
     auto_provision = os.getenv("VAQUERO_AUTO_PROVISION_PROJECT", "true").lower() == "true"
