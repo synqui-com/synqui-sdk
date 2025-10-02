@@ -88,7 +88,7 @@ class VaqueroSDK:
             self._auto_instrumentation = None
             logger.debug("Auto-instrumentation stopped")
 
-    def trace(self, agent_name: str, **kwargs) -> Callable:
+    def trace(self, agent_name: str, capture_code: bool = True, **kwargs) -> Callable:
         """Decorator for tracing function calls.
 
         This decorator can be used on both synchronous and asynchronous functions.
@@ -96,14 +96,18 @@ class VaqueroSDK:
 
         Args:
             agent_name: Name of the agent/component being traced
+            capture_code: Whether to capture source code and docstring for analysis
             **kwargs: Additional options (tags, metadata, etc.)
 
         Returns:
             Decorated function
 
         Example:
-            @sdk.trace("data_processor")
+            @sdk.trace("data_processor", capture_code=True)
             def process_data(data):
+                \"\"\"
+                Process data with expected performance of 1-5 seconds.
+                \"\"\"
                 return {"processed": data}
 
             @sdk.trace("api_client")
@@ -117,14 +121,50 @@ class VaqueroSDK:
             if not self._enabled:
                 return func
 
+            # Capture code context if enabled
+            code_context = {}
+            if capture_code:
+                code_context = self._capture_code_context(func)
+
             if asyncio.iscoroutinefunction(func):
-                return self._async_trace_decorator(func, agent_name, **kwargs)
+                return self._async_trace_decorator(func, agent_name, code_context, **kwargs)
             else:
-                return self._sync_trace_decorator(func, agent_name, **kwargs)
+                return self._sync_trace_decorator(func, agent_name, code_context, **kwargs)
 
         return decorator
 
-    def _sync_trace_decorator(self, func: Callable, agent_name: str, **kwargs) -> Callable:
+    def _capture_code_context(self, func: Callable) -> Dict[str, Any]:
+        """Capture code context for analysis."""
+        try:
+            import inspect
+            
+            # Extract source code
+            source_code = inspect.getsource(func)
+            
+            # Extract docstring
+            docstring = func.__doc__
+            
+            # Extract function signature
+            signature = str(inspect.signature(func))
+            
+            # Extract module and file info
+            module = inspect.getmodule(func)
+            module_name = module.__name__ if module else None
+            file_path = module.__file__ if module else None
+            
+            return {
+                'source_code': source_code,
+                'docstring': docstring,
+                'function_signature': signature,
+                'module_name': module_name,
+                'file_path': file_path,
+                'function_name': func.__name__
+            }
+        except Exception as e:
+            logger.warning(f"Could not capture code context: {e}")
+            return {}
+
+    def _sync_trace_decorator(self, func: Callable, agent_name: str, code_context: Dict[str, Any], **kwargs) -> Callable:
         """Synchronous trace decorator implementation."""
 
         @functools.wraps(func)
@@ -143,6 +183,17 @@ class VaqueroSDK:
             # Set the name field for workflow traces to match agent_name
             # This ensures the batch processor can identify workflow spans
             trace_data.name = agent_name
+
+            # Add code context to metadata
+            if code_context:
+                trace_data.metadata.update({
+                    'source_code': code_context.get('source_code', ''),
+                    'docstring': code_context.get('docstring', ''),
+                    'function_signature': code_context.get('function_signature', ''),
+                    'module_name': code_context.get('module_name', ''),
+                    'file_path': code_context.get('file_path', ''),
+                    'function_name': code_context.get('function_name', '')
+                })
 
             # Set prompt fields if provided
             self._set_prompt_fields(trace_data, kwargs)
@@ -193,7 +244,7 @@ class VaqueroSDK:
 
         return wrapper
 
-    def _async_trace_decorator(self, func: Callable, agent_name: str, **kwargs) -> Callable:
+    def _async_trace_decorator(self, func: Callable, agent_name: str, code_context: Dict[str, Any], **kwargs) -> Callable:
         """Asynchronous trace decorator implementation."""
 
         @functools.wraps(func)
@@ -212,6 +263,17 @@ class VaqueroSDK:
             # Set the name field for workflow traces to match agent_name
             # This ensures the batch processor can identify workflow spans
             trace_data.name = agent_name
+
+            # Add code context to metadata
+            if code_context:
+                trace_data.metadata.update({
+                    'source_code': code_context.get('source_code', ''),
+                    'docstring': code_context.get('docstring', ''),
+                    'function_signature': code_context.get('function_signature', ''),
+                    'module_name': code_context.get('module_name', ''),
+                    'file_path': code_context.get('file_path', ''),
+                    'function_name': code_context.get('function_name', '')
+                })
 
             # Set prompt fields if provided
             self._set_prompt_fields(trace_data, kwargs)
