@@ -2,9 +2,12 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from urllib import request as _urlreq
 from urllib.error import URLError, HTTPError
+
+if TYPE_CHECKING:
+    from .sdk import VaqueroSDK
 
 
 @dataclass
@@ -32,6 +35,7 @@ class SDKConfig:
         auto_instrument_llm: Whether to automatically instrument LLM libraries
         capture_system_prompts: Whether to automatically capture system prompts
         detect_agent_frameworks: Whether to auto-detect agent frameworks
+        capture_code: Whether to capture source code and docstrings for analysis
         mode: Operating mode ("development" or "production")
     """
 
@@ -53,6 +57,7 @@ class SDKConfig:
     auto_instrument_llm: bool = True
     capture_system_prompts: bool = True
     detect_agent_frameworks: bool = True
+    capture_code: bool = True
     mode: str = "development"
 
     def __post_init__(self):
@@ -70,8 +75,8 @@ class SDKConfig:
             raise ValueError("max_retries cannot be negative")
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")
-        if self.mode not in ["development", "production"]:
-            raise ValueError("mode must be either 'development' or 'production'")
+        if self.mode not in MODE_PRESETS:
+            raise ValueError(f"mode must be one of: {list(MODE_PRESETS.keys())}")
 
 
 def configure_from_env() -> SDKConfig:
@@ -131,6 +136,7 @@ def configure_from_env() -> SDKConfig:
         auto_instrument_llm=str_to_bool(os.getenv("VAQUERO_AUTO_INSTRUMENT_LLM", "true")),
         capture_system_prompts=str_to_bool(os.getenv("VAQUERO_CAPTURE_SYSTEM_PROMPTS", "true")),
         detect_agent_frameworks=str_to_bool(os.getenv("VAQUERO_DETECT_AGENT_FRAMEWORKS", "true")),
+        capture_code=str_to_bool(os.getenv("VAQUERO_CAPTURE_CODE", "true")),
         mode=os.getenv("VAQUERO_MODE", "development")
     )
 
@@ -154,6 +160,7 @@ def configure(
     auto_instrument_llm: Optional[bool] = None,
     capture_system_prompts: Optional[bool] = None,
     detect_agent_frameworks: Optional[bool] = None,
+    capture_code: Optional[bool] = None,
     mode: Optional[str] = None,
     **kwargs
 ) -> "VaqueroSDK":
@@ -179,6 +186,7 @@ def configure(
         debug: Enable debug logging
         enabled: Whether the SDK is enabled
         tags: Global tags to add to all traces
+        capture_code: Whether to capture source code and docstrings for analysis
         **kwargs: Additional configuration options
 
     Returns:
@@ -225,6 +233,8 @@ def configure(
         config.capture_system_prompts = capture_system_prompts
     if detect_agent_frameworks is not None:
         config.detect_agent_frameworks = detect_agent_frameworks
+    if capture_code is not None:
+        config.capture_code = capture_code
     if mode is not None:
         config.mode = mode
 
@@ -240,6 +250,124 @@ def configure(
     from .sdk import VaqueroSDK
     sdk = VaqueroSDK(config)
     set_default_sdk(sdk)
+    # Also set the global instance for workflow API (use the same instance)
+    import vaquero.sdk
+    vaquero.sdk._sdk_instance = sdk
+
+    return sdk
+
+
+# Mode presets for simplified configuration
+MODE_PRESETS = {
+    "development": {
+        "capture_inputs": True,
+        "capture_outputs": True,
+        "capture_errors": True,
+        "capture_code": True,
+        "capture_tokens": True,
+        "auto_instrument_llm": True,
+        "capture_system_prompts": True,
+        "detect_agent_frameworks": True,
+        "debug": True,
+        "batch_size": 10,
+        "flush_interval": 2.0,
+    },
+    "production": {
+        "capture_inputs": False,
+        "capture_outputs": False,
+        "capture_errors": True,
+        "capture_code": False,
+        "capture_tokens": True,
+        "auto_instrument_llm": False,
+        "capture_system_prompts": False,
+        "detect_agent_frameworks": False,
+        "debug": False,
+        "batch_size": 100,
+        "flush_interval": 5.0,
+    }
+}
+
+
+def init(
+    api_key: str,
+    project_id: Optional[str] = None,
+    endpoint: Optional[str] = None,
+    mode: str = "development",
+    **overrides
+) -> "VaqueroSDK":
+    """Initialize the Vaquero SDK with simplified configuration.
+
+    This is the recommended way to initialize the SDK. It applies sensible
+    presets based on the specified mode and allows for targeted overrides.
+
+    Args:
+        api_key: API key for authentication with Vaquero
+        project_id: Project ID to associate traces with (optional)
+        endpoint: Vaquero API endpoint URL (optional)
+        mode: Operating mode - "development" (default) or "production"
+        **overrides: Additional configuration overrides
+
+    Returns:
+        Configured SDK instance
+
+    Example:
+        # Simple development setup
+        vaquero.init(api_key="your-key")
+
+        # Production setup
+        vaquero.init(api_key="your-key", mode="production")
+
+        # Custom configuration
+        vaquero.init(
+            api_key="your-key",
+            project_id="your-project",
+            capture_inputs=True,
+            batch_size=50
+        )
+    """
+    # Validate mode
+    if mode not in MODE_PRESETS:
+        raise ValueError(f"Unknown mode '{mode}'. Must be one of: {list(MODE_PRESETS.keys())}")
+
+    # Start with environment configuration for defaults
+    config = configure_from_env()
+
+    # Apply mode preset
+    preset = MODE_PRESETS[mode].copy()
+    for key, value in preset.items():
+        if hasattr(config, key):
+            setattr(config, key, value)
+
+    # Override with provided parameters
+    if api_key is not None:
+        config.api_key = api_key
+    if project_id is not None:
+        config.project_id = project_id
+    if endpoint is not None:
+        config.endpoint = endpoint
+    # Set mode after applying preset to ensure it takes precedence
+    config.mode = mode
+
+    # Apply additional overrides
+    for key, value in overrides.items():
+        if hasattr(config, key):
+            setattr(config, key, value)
+        else:
+            raise ValueError(f"Unknown configuration option: {key}")
+
+    # Auto-provision project if enabled and missing
+    auto_provision = os.getenv("VAQUERO_AUTO_PROVISION_PROJECT", "true").lower() == "true"
+    if auto_provision and config.enabled and config.api_key and not config.project_id:
+        resolved = _resolve_or_create_project(config.endpoint, config.api_key)
+        if resolved:
+            config.project_id = resolved
+
+    # Create and set the default SDK instance
+    from . import set_default_sdk
+    from .sdk import VaqueroSDK
+    sdk = VaqueroSDK(config)
+    set_default_sdk(sdk)
+
     # Also set the global instance for workflow API (use the same instance)
     import vaquero.sdk
     vaquero.sdk._sdk_instance = sdk

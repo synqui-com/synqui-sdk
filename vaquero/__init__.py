@@ -3,21 +3,27 @@
 This SDK provides easy instrumentation for Python applications to capture
 trace data and send it to the Vaquero platform.
 
-Basic Usage:
+Basic Usage (Recommended):
     import vaquero
 
-    # Configure the SDK
-    vaquero.configure(
-        api_key="your-api-key",
-        project_id="your-project-id"
-    )
+    # Simple initialization with sensible defaults
+    vaquero.init(api_key="your-api-key")
 
     # Trace a function
     @vaquero.trace(agent_name="data_processor")
     def process_data(data):
         return {"processed": data}
 
-Advanced Usage:
+Advanced Usage (Legacy):
+    # Advanced configuration (still supported)
+    vaquero.configure(
+        api_key="your-api-key",
+        project_id="your-project-id",
+        capture_inputs=True,
+        debug=True
+    )
+
+Manual Tracing:
     # Manual span creation
     with vaquero.span("custom_operation") as span:
         span.set_attribute("key", "value")
@@ -31,7 +37,7 @@ __email__ = "team@vaquero.com"
 from typing import Optional
 
 from .sdk import VaqueroSDK
-from .config import SDKConfig, configure, configure_from_env
+from .config import SDKConfig, configure, configure_from_env, init
 from .context import get_current_span
 from .decorators import trace as _trace_decorator
 from .workflow import workflow, Workflow
@@ -82,6 +88,7 @@ def shutdown():
 
 
 __all__ = [
+    "init",
     "configure",
     "configure_from_env",
     "trace",

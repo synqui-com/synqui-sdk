@@ -4,6 +4,10 @@ Basic Usage Examples for Vaquero SDK
 
 This file demonstrates the core functionality of the Vaquero SDK
 with practical examples for different use cases.
+
+SDK Initialization:
+- Use vaquero.init() for the new simplified initialization (recommended)
+- Use vaquero.configure() for advanced configuration (legacy, still supported)
 """
 
 import asyncio
@@ -12,14 +16,17 @@ import json
 from typing import Dict, List, Any
 import vaquero
 
-# Configure the SDK
-vaquero.configure(
-    api_key="your-api-key-here",
-    project_id="your-project-id",
-    endpoint="https://api.vaquero.com",
-    environment="development",
-    debug=True
-)
+# Configure the SDK using the new init() method (recommended)
+vaquero.init(api_key="your-api-key-here", mode="development")
+
+# Alternative: Use the legacy configure() method for backward compatibility
+# vaquero.configure(
+#     api_key="your-api-key-here",
+#     project_id="your-project-id",
+#     endpoint="https://api.vaquero.com",
+#     environment="development",
+#     debug=True
+# )
 
 # Example 1: Simple synchronous function tracing
 @vaquero.trace(agent_name="data_processor")
