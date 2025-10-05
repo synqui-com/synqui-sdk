@@ -21,59 +21,6 @@ from .auto_instrumentation import AutoInstrumentationEngine
 logger = logging.getLogger(__name__)
 
 
-class _SpanManager:
-    """Helper class that works as both a decorator and context manager for spans."""
-    
-    def __init__(self, sdk: 'VaqueroSDK', operation_name: str, capture_code: bool = True, **kwargs):
-        self.sdk = sdk
-        self.operation_name = operation_name
-        self.capture_code = capture_code
-        self.kwargs = kwargs
-        self._context_manager = None
-        self._trace_data = None
-    
-    def __call__(self, func: Callable) -> Callable:
-        """Called when used as a decorator: @sdk.span("name")"""
-        logger.info(f"SDK: === _SpanManager.__call__ invoked ===")
-        logger.info(f"SDK: Operation name: {self.operation_name}")
-        logger.info(f"SDK: Capture code: {self.capture_code}")
-        logger.info(f"SDK: Function: {func.__name__}")
-        logger.info(f"SDK: Function module: {func.__module__}")
-
-        if not self.sdk._enabled:
-            logger.warning(f"SDK: SDK is disabled, returning original function {func.__name__}")
-            return func
-
-        # Capture code context if enabled
-        logger.info(f"SDK: Capture code enabled: {self.capture_code}")
-        code_context = {}
-        if self.capture_code:
-            logger.info(f"SDK: Calling _capture_code_context for {func.__name__}")
-            code_context = self.sdk._capture_code_context(func)
-            logger.info(f"SDK: Code context captured: {len(code_context)} keys")
-        else:
-            logger.warning(f"SDK: Capture code disabled for {func.__name__}")
-
-        # Create wrapper for sync or async functions
-        if asyncio.iscoroutinefunction(func):
-            logger.info(f"SDK: Creating async span decorator for {func.__name__}")
-            return self.sdk._async_span_decorator(func, self.operation_name, code_context, **self.kwargs)
-        else:
-            logger.info(f"SDK: Creating sync span decorator for {func.__name__}")
-            return self.sdk._sync_span_decorator(func, self.operation_name, code_context, **self.kwargs)
-    
-    def __enter__(self):
-        """Called when used as context manager: with sdk.span("name"):"""
-        self._context_manager = self.sdk._span_context_manager(self.operation_name, **self.kwargs)
-        self._trace_data = self._context_manager.__enter__()
-        return self._trace_data
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Called when exiting context manager."""
-        if self._context_manager:
-            return self._context_manager.__exit__(exc_type, exc_val, exc_tb)
-
-
 class VaqueroSDK:
     """Main SDK class for Vaquero instrumentation.
 
@@ -449,44 +396,30 @@ class VaqueroSDK:
 
         return wrapper
 
-    def span(self, operation_name: str, capture_code: bool = True, **kwargs):
-        """Decorator or context manager for span creation.
+    def span(self, operation_name: str, **kwargs):
+        """Context manager for manual span creation.
 
-        This can be used both as a decorator (for functions) or as a context manager (for code blocks).
-        When used as a decorator with capture_code=True, it will capture source code, docstring, and
-        function signature for intelligent analysis.
+        This is used as a context manager for code blocks that need manual span control.
+        For function decoration, use @vaquero.trace() instead.
 
         Args:
             operation_name: Name of the operation/agent
-            capture_code: Whether to capture source code (only for decorator usage)
             **kwargs: Additional options (tags, metadata, etc.)
 
         Returns:
-            A _SpanManager instance that works as both decorator and context manager
+            Context manager yielding TraceData instance
 
         Examples:
-            # As decorator (captures source code)
-            @sdk.span("data_processor", capture_code=True)
-            def process_data(data):
-                '''Process data with expected performance of 1-5 seconds.'''
-                return {"processed": data}
-
             # As context manager (for code blocks)
             with sdk.span("custom_operation") as span:
                 span.set_attribute("batch_size", 100)
                 # Your code here
         """
-        logger.info(f"SDK: === SPAN METHOD CALLED ===")
+        logger.info(f"SDK: === SPAN CONTEXT MANAGER CALLED ===")
         logger.info(f"SDK: Operation name: {operation_name}")
-        logger.info(f"SDK: Capture code: {capture_code}")
         logger.info(f"SDK: Additional kwargs: {kwargs}")
 
-        return _SpanManager(
-            sdk=self,
-            operation_name=operation_name,
-            capture_code=capture_code,
-            **kwargs
-        )
+        return self._span_context_manager(operation_name, **kwargs)
     
     @contextmanager
     def _span_context_manager(self, operation_name: str, **kwargs) -> Generator[TraceData, None, None]:
@@ -652,55 +585,6 @@ class VaqueroSDK:
                     self._send_trace(trace_data)
         
         return wrapper
-
-    @asynccontextmanager
-    async def async_span(self, operation_name: str, **kwargs):
-        """Async context manager for manual span creation.
-
-        Args:
-            operation_name: Name of the operation
-            **kwargs: Additional options (tags, metadata, etc.)
-
-        Yields:
-            TraceData instance for the span
-        """
-        if not self._enabled:
-            # Create a dummy span that does nothing
-            dummy_span = TraceData(agent_name=operation_name)
-            yield dummy_span
-            return
-
-        # Create trace data
-        trace_data = create_child_span(
-            agent_name=operation_name,
-            function_name=operation_name,
-            tags=kwargs.get("tags", {}),
-            metadata=kwargs.get("metadata", {})
-        )
-
-        # Set the name field for workflow spans to match agent_name
-        # This ensures the batch processor can identify workflow spans
-        trace_data.name = operation_name
-
-        # Add global tags from config
-        trace_data.tags.update(self.config.tags)
-
-        with span_context(trace_data):
-            try:
-                yield trace_data
-            except Exception as e:
-                if self.config.capture_errors:
-                    trace_data.set_error(e)
-                else:
-                    trace_data.finish(SpanStatus.FAILED)
-                raise
-            finally:
-                # Finish span if not already finished
-                if trace_data.status == SpanStatus.RUNNING:
-                    trace_data.finish(SpanStatus.COMPLETED)
-
-                # Send trace data
-                self._send_trace(trace_data)
 
     def _capture_inputs(self, args: tuple, kwargs: dict) -> Dict[str, Any]:
         """Safely capture function inputs.

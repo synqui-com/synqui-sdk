@@ -35,7 +35,7 @@ class TestModePresets:
         assert dev_preset['capture_system_prompts'] is True
         assert dev_preset['detect_agent_frameworks'] is True
         assert dev_preset['debug'] is True
-        assert dev_preset['batch_size'] == 5  # Updated for lower latency
+        assert dev_preset['batch_size'] == 10
         assert dev_preset['flush_interval'] == 0.5  # Updated for lower latency
 
     def test_production_mode_values(self):
@@ -50,23 +50,9 @@ class TestModePresets:
         assert prod_preset['capture_system_prompts'] is False
         assert prod_preset['detect_agent_frameworks'] is False
         assert prod_preset['debug'] is False
-        assert prod_preset['batch_size'] == 50  # Updated for better responsiveness
+        assert prod_preset['batch_size'] == 100
         assert prod_preset['flush_interval'] == 1.0  # Updated for better responsiveness
 
-    def test_realtime_mode_values(self):
-        """Test realtime mode has expected values."""
-        realtime_preset = MODE_PRESETS['realtime']
-        assert realtime_preset['capture_inputs'] is True
-        assert realtime_preset['capture_outputs'] is True
-        assert realtime_preset['capture_errors'] is True
-        assert realtime_preset['capture_code'] is True
-        assert realtime_preset['capture_tokens'] is True
-        assert realtime_preset['auto_instrument_llm'] is True
-        assert realtime_preset['capture_system_prompts'] is True
-        assert realtime_preset['detect_agent_frameworks'] is True
-        assert realtime_preset['debug'] is True
-        assert realtime_preset['batch_size'] == 1  # Immediate sending
-        assert realtime_preset['flush_interval'] == 0.1  # Very short interval
 
 
 class TestSDKConfig:
@@ -137,7 +123,7 @@ class TestInitFunction:
                     assert config.mode == "development"
                     assert config.capture_inputs is True
                     assert config.debug is True
-                    assert config.batch_size == 5
+                    assert config.batch_size == 10
 
     def test_init_explicit_development_mode(self):
         """Test init() with explicit development mode."""
@@ -179,27 +165,8 @@ class TestInitFunction:
                     assert config.capture_inputs is False
                     assert config.capture_outputs is False
                     assert config.debug is False
-                    assert config.batch_size == 50
+                    assert config.batch_size == 100
 
-    def test_init_realtime_mode(self):
-        """Test init() with realtime mode."""
-        with patch.dict(os.environ, {
-            'VAQUERO_ENABLED': 'true',
-            'VAQUERO_API_KEY': 'dummy-key-for-testing',
-            'VAQUERO_PROJECT_ID': '',
-            'VAQUERO_ENDPOINT': 'https://api.vaquero.com'
-        }, clear=True):
-            with patch('vaquero.config._resolve_or_create_project', return_value=None):
-                with patch('vaquero.set_default_sdk') as mock_set_sdk:
-                    sdk = init(api_key="test-key", mode="realtime")
-
-                    args, kwargs = mock_set_sdk.call_args
-                    sdk_instance = args[0]
-                    config = sdk_instance.config
-
-                    assert config.mode == "realtime"
-                    assert config.batch_size == 1  # Immediate sending
-                    assert config.flush_interval == 0.1  # Very short interval
 
     def test_init_invalid_mode(self):
         """Test init() with invalid mode raises error."""

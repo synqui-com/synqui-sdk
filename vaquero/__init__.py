@@ -67,13 +67,27 @@ def trace(agent_name: str, **kwargs):
 
 
 def span(operation_name: str, **kwargs):
-    """Span context manager using the default SDK instance."""
+    """Context manager for manual span creation using the default SDK instance.
+
+    This is used for code blocks that need manual span control.
+    For function decoration, use @vaquero.trace() instead.
+
+    Args:
+        operation_name: Name of the operation/agent
+        **kwargs: Additional options (tags, metadata, etc.)
+
+    Returns:
+        Context manager yielding TraceData instance
+
+    Example:
+        # As context manager (for code blocks)
+        with vaquero.span("custom_operation") as span:
+            span.set_attribute("batch_size", 100)
+            # Your code here
+    """
     return get_default_sdk().span(operation_name, **kwargs)
 
 
-def async_span(operation_name: str, **kwargs):
-    """Async span context manager using the default SDK instance."""
-    return get_default_sdk().async_span(operation_name, **kwargs)
 
 
 def flush():
@@ -93,7 +107,6 @@ __all__ = [
     "configure_from_env",
     "trace",
     "span",
-    "async_span",
     "workflow",
     "flush",
     "shutdown",

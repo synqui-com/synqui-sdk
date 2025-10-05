@@ -79,62 +79,67 @@ class TestLLMCallTracker:
         """Test tracking successful LLM call."""
         # Mock SDK
         sdk = Mock()
-        sdk.span = Mock()
-        sdk.span.return_value.__enter__ = Mock()
-        sdk.span.return_value.__exit__ = Mock(return_value=None)
-        
+
         tracker = LLMCallTracker(sdk)
-        
-        # Mock span
-        span = Mock()
-        sdk.span.return_value.__enter__.return_value = span
-        
-        # Track successful call
-        tracker._track_successful_call(
-            system_prompt="You are a helpful assistant",
-            model="gpt-3.5-turbo",
-            input_tokens=100,
-            output_tokens=50,
-            total_tokens=150,
-            duration=1.5
-        )
-        
-        # Verify span was created and configured
-        sdk.span.assert_called_once_with("llm_call")
-        assert span.system_prompt == "You are a helpful assistant"
-        assert span.model_name == "gpt-3.5-turbo"
-        assert span.input_tokens == 100
-        assert span.output_tokens == 50
-        assert span.total_tokens == 150
+
+        # Mock parent span from context
+        parent_span = Mock()
+        parent_span.outputs = {}
+
+        # Mock get_current_span to return our mock span
+        with patch('vaquero.context.get_current_span', return_value=parent_span):
+            # Track successful call
+            tracker._track_successful_call(
+                system_prompt="You are a helpful assistant",
+                model="gpt-3.5-turbo",
+                input_tokens=100,
+                output_tokens=50,
+                total_tokens=150,
+                duration=1.5
+            )
+
+        # Verify parent span was annotated with LLM call details
+        assert "llm_calls" in parent_span.outputs
+        llm_calls = parent_span.outputs["llm_calls"]
+        assert len(llm_calls) == 1
+
+        call_record = llm_calls[0]
+        assert call_record["model"] == "gpt-3.5-turbo"
+        assert call_record["provider"] == "openai"
+        assert call_record["input_tokens"] == 100
+        assert call_record["output_tokens"] == 50
+        assert call_record["total_tokens"] == 150
     
     def test_track_failed_call(self):
         """Test tracking failed LLM call."""
         # Mock SDK
         sdk = Mock()
-        sdk.span = Mock()
-        sdk.span.return_value.__enter__ = Mock()
-        sdk.span.return_value.__exit__ = Mock(return_value=None)
-        
+
         tracker = LLMCallTracker(sdk)
-        
-        # Mock span
-        span = Mock()
-        sdk.span.return_value.__enter__.return_value = span
-        
+
+        # Mock parent span from context
+        parent_span = Mock()
+        parent_span.outputs = {}
+
         # Track failed call
         error = Exception("API error")
-        tracker._track_failed_call(
-            system_prompt="You are a helpful assistant",
-            model="gpt-3.5-turbo",
-            duration=1.5,
-            error=error
-        )
-        
-        # Verify span was created and configured
-        sdk.span.assert_called_once_with("llm_call_failed")
-        assert span.system_prompt == "You are a helpful assistant"
-        assert span.model_name == "gpt-3.5-turbo"
-        span.set_error.assert_called_once_with(error)
+        with patch('vaquero.context.get_current_span', return_value=parent_span):
+            tracker._track_failed_call(
+                system_prompt="You are a helpful assistant",
+                model="gpt-3.5-turbo",
+                duration=1.5,
+                error=error
+            )
+
+        # Verify parent span was annotated with LLM call details
+        assert "llm_calls" in parent_span.outputs
+        llm_calls = parent_span.outputs["llm_calls"]
+        assert len(llm_calls) == 1
+
+        call_record = llm_calls[0]
+        assert call_record["model"] == "gpt-3.5-turbo"
+        assert call_record["status"] == "failed"
+        assert "error" in call_record
 
 
 class TestAutoInstrumentationEngine:
