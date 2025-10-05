@@ -199,8 +199,8 @@ def django_integration_example():
     
     # Configure SDK
     vaquero.configure(
-        api_key=os.getenv('COGNITIONFLOW_API_KEY'),
-        project_id=os.getenv('COGNITIONFLOW_PROJECT_ID'),
+        api_key=os.getenv('VAQUERO_API_KEY'),
+        project_id=os.getenv('VAQUERO_PROJECT_ID'),
         environment=os.getenv('ENVIRONMENT', 'development')
     )
     
