@@ -1,8 +1,42 @@
 # Getting Started with Vaquero SDK
 
+## 🚀 5-Minute Quick Start
+
+Get up and running with Vaquero in just 3 simple steps:
+
+<div class="quick-start-steps">
+
+### 1️⃣ Install
+```bash
+pip install vaquero-sdk
+```
+
+### 2️⃣ Initialize
+```python
+import vaquero
+
+vaquero.init(api_key="your-api-key")
+```
+
+### 3️⃣ Trace
+```python
+@vaquero.trace("my_agent")
+def my_function(data):
+    # Your code here
+    return processed_data
+
+# Done! ✨ Your function is now automatically traced
+```
+
+</div>
+
+**That's it!** Your functions are now being automatically traced and monitored.
+
+---
+
 ## Overview
 
-The Vaquero Python SDK provides comprehensive observability and tracing capabilities for Python applications. This guide will help you get started with the SDK in just a few minutes.
+The Vaquero Python SDK provides comprehensive observability and tracing capabilities for Python applications. This guide covers everything from basic setup to advanced configuration options.
 
 ## Installation
 
@@ -412,12 +446,53 @@ prod_config = SDKConfig(
 
 ## Troubleshooting
 
-### Common Issues
+### Common Issues & Solutions
 
-1. **Traces not appearing**: Check your API key and project ID
-2. **Performance impact**: Reduce batch size or disable input/output capture
-3. **Memory usage**: Use MemoryManager to monitor and control memory
-4. **Network errors**: Check your endpoint URL and network connectivity
+#### **"SDK not initialized" error**
+```python
+# Make sure to call init() before using the SDK
+import vaquero
+vaquero.init(api_key="your-key")
+```
+
+#### **Traces not appearing**
+```python
+# Check if SDK is enabled
+if vaquero.get_default_sdk().config.enabled:
+    print("SDK is active")
+else:
+    print("SDK is disabled")
+
+# Manually flush pending traces
+vaquero.flush()
+```
+
+#### **Performance issues**
+```python
+# Use development mode for lower latency, production for efficiency
+vaquero.init(api_key="your-key", mode="development")  # or "production"
+```
+
+#### **High memory usage**
+```python
+# Monitor memory usage
+stats = vaquero.get_default_sdk().get_stats()
+print(f"Memory usage: {stats['memory_usage_mb']} MB")
+
+# Reduce batch size if needed
+vaquero.init(api_key="your-key", batch_size=50)
+```
+
+#### **Network connectivity problems**
+```python
+# Check endpoint connectivity
+import requests
+try:
+    response = requests.get("https://api.vaquero.app/health", timeout=5)
+    print("Endpoint is reachable")
+except:
+    print("Network connectivity issue")
+```
 
 ### Debug Mode
 
@@ -436,9 +511,12 @@ vaquero.init(
 Monitor SDK health:
 
 ```python
-# Check if SDK is enabled
-if vaquero.get_default_sdk().config.enabled:
-    print("SDK is active")
+# Check if SDK is enabled and get stats
+sdk = vaquero.get_default_sdk()
+if sdk.config.enabled:
+    stats = sdk.get_stats()
+    print(f"Traces sent: {stats['traces_sent']}")
+    print(f"Queue size: {stats['queue_size']}")
 
 # Manually flush traces
 vaquero.flush()
@@ -447,12 +525,40 @@ vaquero.flush()
 vaquero.shutdown()
 ```
 
-## Next Steps
+## 🚀 What's Next?
 
-1. **Explore Examples**: Check out the `examples/` directory for comprehensive examples
-2. **Read API Reference**: See `docs/API_REFERENCE.md` for detailed API documentation
-3. **Framework Integration**: Look at `examples/integration_examples.py` for framework-specific patterns
-4. **Advanced Features**: Explore `examples/advanced_usage.py` for advanced patterns
+Now that you have basic tracing working, explore these areas:
+
+### 📖 **[Common Patterns](../patterns/)**
+Learn essential patterns for different use cases:
+- Function tracing
+- API endpoint monitoring
+- Database operation tracing
+- Error handling
+
+### 🔧 **[Advanced Features](../advanced/)**
+Dive deeper into power user features:
+- Automatic LLM instrumentation
+- Custom performance monitoring
+- Workflow orchestration
+- Circuit breaker patterns
+
+### 🛠️ **[Framework Integrations](./integrations/)**
+Framework-specific guides for:
+- FastAPI
+- Django
+- Flask
+- Celery
+- SQLAlchemy
+
+### 📚 **[API Reference](../API_REFERENCE.md)**
+Complete reference for all configuration options and APIs.
+
+### 💡 **[Troubleshooting Guide](./TROUBLESHOOTING.md)**
+Comprehensive guide for common issues and solutions.
+
+### 🎯 **[Best Practices](./BEST_PRACTICES.md)**
+Guidelines for consistent, high-quality SDK usage.
 
 ## Support
 

@@ -39,8 +39,8 @@ def my_function(data):
 
 <div class="nav-cards">
 
-### 🚀 [Quick Start](./quick-start.md)
-Get started in 5 minutes with installation, configuration, and your first trace.
+### 🚀 [Getting Started](./GETTING_STARTED.md)
+Complete guide to install, configure, and start tracing with 5-minute quick start.
 
 ### 📖 [Common Patterns](./patterns/)
 Essential patterns for function tracing, API endpoints, database operations, and error handling.
@@ -48,14 +48,17 @@ Essential patterns for function tracing, API endpoints, database operations, and
 ### 🔧 [Advanced Features](./advanced/)
 Power user features including auto-instrumentation, custom spans, and performance monitoring.
 
-### 📚 [API Reference](./reference/)
+### 🛠️ [Framework Integrations](./integrations/)
+Framework-specific guides for FastAPI, Django, Flask, Celery, and SQLAlchemy.
+
+### 💡 [Troubleshooting](./TROUBLESHOOTING.md)
+Common issues, solutions, and debugging strategies.
+
+### 🎯 [Best Practices](./BEST_PRACTICES.md)
+Guidelines for consistent, high-quality SDK usage.
+
+### 📚 [API Reference](./API_REFERENCE.md)
 Complete reference for configuration, tracing, spans, and utilities.
-
-### 🛠️ [Integrations](./integrations/)
-Framework-specific guides for FastAPI, Django, Flask, and Celery.
-
-### ❓ [Troubleshooting](./troubleshooting.md)
-Common issues, performance tips, and debugging guides.
 
 </div>
 
@@ -100,9 +103,11 @@ Monitor Celery tasks, Redis operations, and distributed processing.
 
 ## 🚀 Next Steps
 
-Ready to get started? Jump to the **[Quick Start guide](./quick-start.md)** or explore **[common patterns](./patterns/)** for practical examples.
+Ready to get started? Jump to the **[Getting Started guide](./GETTING_STARTED.md)** for a complete setup guide, or check out **[common patterns](./patterns/)** for practical examples.
 
-Need help? Check out the **[troubleshooting guide](./troubleshooting.md)** or **[contact support](mailto:support@vaquero.app)**.
+Need help? Check out the **[Troubleshooting guide](./TROUBLESHOOTING.md)** or **[Best Practices guide](./BEST_PRACTICES.md)** for detailed guidance.
+
+Framework-specific help? See our **[integration guides](./integrations/)** for FastAPI, Django, Flask, Celery, and SQLAlchemy.
 
 ---
 
