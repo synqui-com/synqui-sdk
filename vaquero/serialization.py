@@ -100,6 +100,18 @@ def safe_serialize(obj: Any, depth: int = 0) -> Any:
 
         return result
 
+    # Handle specific LangChain objects
+    if hasattr(obj, 'tool') and hasattr(obj, 'tool_input'):
+        # ToolAgentAction
+        return {
+            "type": "ToolAgentAction",
+            "tool": safe_serialize(obj.tool, depth + 1),
+            "tool_input": safe_serialize(obj.tool_input, depth + 1),
+            "log": safe_serialize(getattr(obj, 'log', ''), depth + 1),
+            "message_log": [safe_serialize(msg, depth + 1) for msg in getattr(obj, 'message_log', [])],
+            "tool_call_id": safe_serialize(getattr(obj, 'tool_call_id', None), depth + 1)
+        }
+    
     # Handle objects with __dict__
     if hasattr(obj, '__dict__'):
         try:

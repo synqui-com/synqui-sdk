@@ -328,27 +328,19 @@ class BatchProcessor:
             # Track which span_ids have already been processed to avoid duplicates
             processed_span_ids = set()  # Global set to track all processed span_ids
 
+            # Store items before popping them in case send fails
+            self._current_items_by_trace = {}
             for tid in ready_trace_ids:
-                items = self._pending_by_trace.pop(tid, [])
+                self._current_items_by_trace[tid] = self._pending_by_trace.pop(tid, [])
                 if self.config.debug:
-                    print(f"🔍 Processing trace {tid} with {len(items)} items")
+                    print(f"🔍 Processing trace {tid} with {len(self._current_items_by_trace[tid])} items")
 
                 # Split into one trace (root) and agents (children)
-                # Root can be either: no parent_span_id OR a main workflow span
-                # IMPORTANT: Make this logic mutually exclusive to avoid duplicates
-                root_items = [
-                    it for it in items
-                    if not it.get("parent_span_id") or
-                    it.get("name") in ["linear_workflow", "main_workflow", "workflow"] or
-                    it.get("agent_name") in ["linear_workflow", "main_workflow", "workflow"]
-                ]
-                child_items = [
-                    it for it in items
-                    if it.get("parent_span_id") and not (
-                        it.get("name") in ["linear_workflow", "main_workflow", "workflow"] or
-                        it.get("agent_name") in ["linear_workflow", "main_workflow", "workflow"]
-                    )
-                ]
+                # Logic: Root items have no parent_span_id. Everything else is a child.
+                # This ensures mutual exclusivity and prevents duplicate trace creation.
+                items = self._current_items_by_trace[tid]
+                root_items = [it for it in items if not it.get("parent_span_id")]
+                child_items = [it for it in items if it.get("parent_span_id")]
 
                 if self.config.debug:
                     print(f"🔍 Trace {tid}: {len(root_items)} root items, {len(child_items)} child items")
@@ -424,6 +416,7 @@ class BatchProcessor:
                 ]
 
                 # Process root items (traces)
+                # Group root items by trace_id to ensure one trace per trace_id
                 # Filter out workflow spans from being treated as traces since they should only be agents
                 non_workflow_root_items = [
                     item for item in root_items
@@ -431,46 +424,52 @@ class BatchProcessor:
                     item.get("agent_name") not in workflow_names
                 ]
 
-                if non_workflow_root_items:
-                    # Use the first root item as the trace
-                    item = non_workflow_root_items[0]
-                    trace_data = {
-                        "trace_id": item.get("trace_id"),
-                        "parent_trace_id": item.get("parent_trace_id"),
-                        "session_id": item.get("session_id"),
-                        "name": item.get("name"),
-                        "description": item.get("description"),
-                        "tags": item.get("tags", {}),
-                        "status": item.get("status", "completed"),
-                        "start_time": item.get("start_time"),
-                        "end_time": item.get("end_time"),
-                        "duration_ms": item.get("duration_ms"),
-                        "total_tokens": item.get("total_tokens", 0),
-                        "total_cost": item.get("cost", 0.0),
-                        "error_count": 1 if item.get("error") else 0,
-                        "git_commit_sha": item.get("git_commit_sha"),
-                        "git_branch": item.get("git_branch"),
-                        "git_repository": item.get("git_repository"),
-                        "environment": item.get("environment"),
-                        "hostname": item.get("hostname"),
-                        "sdk_version": item.get("sdk_version"),
-                        "raw_data": {
-                            "inputs": item.get("inputs"),
-                            "outputs": item.get("outputs"),
-                            "error": item.get("error"),
-                            "metadata": item.get("metadata"),
-                            "attributes": item.get("attributes"),
-                            "input_tokens": item.get("input_tokens"),
-                            "output_tokens": item.get("output_tokens"),
-                            "model_name": item.get("model_name"),
-                            "model_provider": item.get("model_provider"),
-                            "system_prompt": item.get("system_prompt"),
-                            "prompt_name": item.get("prompt_name"),
-                            "prompt_version": item.get("prompt_version"),
-                            "prompt_parameters": item.get("prompt_parameters"),
-                            "prompt_hash": item.get("prompt_hash"),
+                # Group by trace_id to avoid duplicates
+                traces_by_id = {}
+                for item in non_workflow_root_items:
+                    trace_id = item.get("trace_id")
+                    if trace_id not in traces_by_id:
+                        # First time seeing this trace_id - create the trace entry
+                        traces_by_id[trace_id] = {
+                            "trace_id": trace_id,
+                            "parent_trace_id": item.get("parent_trace_id"),
+                            "session_id": item.get("session_id"),
+                            "name": item.get("name"),
+                            "description": item.get("description"),
+                            "tags": item.get("tags", {}),
+                            "status": item.get("status", "completed"),
+                            "start_time": item.get("start_time"),
+                            "end_time": item.get("end_time"),
+                            "duration_ms": item.get("duration_ms"),
+                            "total_tokens": item.get("total_tokens", 0),
+                            "total_cost": item.get("cost", 0.0),
+                            "error_count": 1 if item.get("error") else 0,
+                            "git_commit_sha": item.get("git_commit_sha"),
+                            "git_branch": item.get("git_branch"),
+                            "git_repository": item.get("git_repository"),
+                            "environment": item.get("environment"),
+                            "hostname": item.get("hostname"),
+                            "sdk_version": item.get("sdk_version"),
+                            "raw_data": {
+                                "inputs": item.get("inputs"),
+                                "outputs": item.get("outputs"),
+                                "error": item.get("error"),
+                                "metadata": item.get("metadata"),
+                                "attributes": item.get("attributes"),
+                                "input_tokens": item.get("input_tokens"),
+                                "output_tokens": item.get("output_tokens"),
+                                "model_name": item.get("model_name"),
+                                "model_provider": item.get("model_provider"),
+                                "system_prompt": item.get("system_prompt"),
+                                "prompt_name": item.get("prompt_name"),
+                                "prompt_version": item.get("prompt_version"),
+                                "prompt_parameters": item.get("prompt_parameters"),
+                                "prompt_hash": item.get("prompt_hash"),
+                            }
                         }
-                    }
+
+                # Add all traces to the batch
+                for trace_data in traces_by_id.values():
                     trace_data = {k: v for k, v in trace_data.items() if v is not None}
                     traces.append(trace_data)
 
@@ -932,6 +931,11 @@ class BatchProcessor:
                 self._consecutive_failures += 1
                 if attempt == self.config.max_retries - 1:
                     logger.error(f"Failed to send batch after {self.config.max_retries} attempts: {e}")
+                    # Put items back into pending queue for retry
+                    for tid, items in self._current_items_by_trace.items():
+                        if items:  # Only put back if there are items
+                            self._pending_by_trace[tid] = items
+                            logger.info(f"Put {len(items)} items back into pending queue for trace {tid}")
                     self._failed_batches.append({
                         "batch": batch,
                         "timestamp": time.time(),

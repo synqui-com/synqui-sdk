@@ -57,6 +57,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         self.sdk = sdk or get_global_instance()
         self.redact_prompts = redact_prompts
         self.redact_outputs = redact_outputs
+        # Track active spans and their context managers so we can close on *_end
+        # Structure: run_id -> {"span": TraceData, "cm": context_manager}
         self._spans = {}
         self._trace_id = str(uuid.uuid4())
 
@@ -64,152 +66,316 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         """Called when a chain starts."""
         span_name = serialized.get("name", "chain") if isinstance(serialized, dict) else "chain"
 
-        # Create a span for this chain
-        with self.sdk.span(f"langchain:{span_name}") as span:
-            self._spans[run_id] = span
+        # Create and keep the span open until on_chain_end/on_chain_error
+        cm = self.sdk._span_context_manager(f"langchain:{span_name}")
+        span = cm.__enter__()
+        self._spans[run_id] = {"span": span, "cm": cm}
 
-            # Add metadata
-            if metadata:
-                span.set_tag("langchain.metadata", metadata)
-            if tags:
-                span.set_tag("langchain.tags", tags)
+        # Add metadata
+        if metadata:
+            span.set_tag("langchain.metadata", metadata)
+        if tags:
+            span.set_tag("langchain.tags", tags)
 
-            # Add inputs (redacted if configured)
-            if inputs and not self.redact_prompts:
+        # Add inputs (also map to canonical inputs when not redacted)
+        if inputs and not self.redact_prompts:
+            try:
+                # Serialize LangChain objects for storage
+                serialized_inputs = self._serialize_langchain_data(inputs)
+                span.set_tag("langchain.inputs", str(serialized_inputs)[:1000])  # Truncate for safety
+                span.inputs = {"inputs": serialized_inputs}
+            except Exception:
                 span.set_tag("langchain.inputs", str(inputs)[:1000])  # Truncate for safety
 
     def on_chain_end(self, outputs, *, run_id, **kwargs):
         """Called when a chain ends successfully."""
         if run_id in self._spans:
-            span = self._spans[run_id]
-            # Add outputs (redacted if configured)
+            span = self._spans[run_id]["span"]
+            cm = self._spans[run_id]["cm"]
+            # Add outputs (redacted if configured) and canonical outputs
             if outputs and not self.redact_outputs:
-                span.set_tag("langchain.outputs", str(outputs)[:1000])  # Truncate for safety
+                try:
+                    # Serialize LangChain objects for storage
+                    serialized_outputs = self._serialize_langchain_data(outputs)
+                    span.set_tag("langchain.outputs", str(serialized_outputs)[:1000])  # Truncate for safety
+                    span.outputs = {"outputs": serialized_outputs}
+                except Exception:
+                    span.set_tag("langchain.outputs", str(outputs)[:1000])  # Truncate for safety
+            # Close the span
+            cm.__exit__(None, None, None)
             del self._spans[run_id]
 
     def on_chain_error(self, error, *, run_id, **kwargs):
         """Called when a chain errors."""
         if run_id in self._spans:
-            span = self._spans[run_id]
+            span = self._spans[run_id]["span"]
+            cm = self._spans[run_id]["cm"]
             span.set_tag("langchain.error", str(error))
             span.set_tag("langchain.error_type", type(error).__name__)
-            del self._spans[run_id]
+            # Close the span with error
+            try:
+                cm.__exit__(type(error), error, None)
+            finally:
+                del self._spans[run_id]
 
     def on_llm_start(self, serialized, prompts, *, run_id, parent_run_id=None, tags=None, metadata=None, **kwargs):
         """Called when an LLM starts."""
         model_name = serialized.get("kwargs", {}).get("model", "unknown") if isinstance(serialized, dict) else "unknown"
         span_name = f"llm:{model_name}"
 
-        with self.sdk.span(span_name) as span:
-            self._spans[run_id] = span
+        # Keep LLM span open
+        cm = self.sdk._span_context_manager(span_name)
+        span = cm.__enter__()
+        self._spans[run_id] = {"span": span, "cm": cm}
 
-            # Add metadata
-            if metadata:
-                span.set_tag("langchain.metadata", metadata)
-            if tags:
-                span.set_tag("langchain.tags", tags)
+        # Add metadata
+        if metadata:
+            span.set_tag("langchain.metadata", metadata)
+        if tags:
+            span.set_tag("langchain.tags", tags)
 
-            # Add prompt info (redacted if configured)
-            if prompts and not self.redact_prompts:
+        # Add prompt info (redacted if configured) and canonical inputs
+        if prompts and not self.redact_prompts:
+            try:
+                # Serialize LangChain objects for storage
+                serialized_prompts = self._serialize_langchain_data(prompts)
+                span.set_tag("langchain.prompts", str(serialized_prompts)[:1000])
+                span.set_tag("langchain.prompt_count", len(prompts))
+                span.inputs = {"prompts": serialized_prompts}
+            except Exception:
                 span.set_tag("langchain.prompts", str(prompts)[:1000])
                 span.set_tag("langchain.prompt_count", len(prompts))
 
     def on_llm_end(self, response, *, run_id, **kwargs):
         """Called when an LLM ends successfully."""
         if run_id in self._spans:
-            span = self._spans[run_id]
+            span = self._spans[run_id]["span"]
+            cm = self._spans[run_id]["cm"]
 
-            # Extract token usage if available
+            # Extract token usage if available and map to canonical fields
             if hasattr(response, 'llm_output') and response.llm_output:
                 usage = response.llm_output.get('token_usage', {})
                 if usage:
                     span.set_tag("langchain.token_usage", usage)
+                    try:
+                        span.input_tokens = int(usage.get('prompt_tokens') or usage.get('input_tokens') or 0)
+                        span.output_tokens = int(usage.get('completion_tokens') or usage.get('output_tokens') or 0)
+                        span.total_tokens = int(usage.get('total_tokens') or (span.input_tokens + span.output_tokens))
+                    except Exception:
+                        pass
 
-            # Add response info (redacted if configured)
+            # Add response info (redacted if configured) and canonical outputs
             if hasattr(response, 'generations') and not self.redact_outputs:
                 generations = response.generations
-                span.set_tag("langchain.generations", str(generations)[:1000])
+                try:
+                    # Serialize LangChain objects for storage
+                    serialized_generations = self._serialize_langchain_data(generations)
+                    span.set_tag("langchain.generations", str(serialized_generations)[:1000])
+                    span.outputs = {"generations": serialized_generations}
+                except Exception:
+                    span.set_tag("langchain.generations", str(generations)[:1000])
 
+            # Close the span
+            cm.__exit__(None, None, None)
             del self._spans[run_id]
 
     def on_llm_error(self, error, *, run_id, **kwargs):
         """Called when an LLM errors."""
         if run_id in self._spans:
-            span = self._spans[run_id]
+            span = self._spans[run_id]["span"]
+            cm = self._spans[run_id]["cm"]
             span.set_tag("langchain.error", str(error))
             span.set_tag("langchain.error_type", type(error).__name__)
-            del self._spans[run_id]
+            try:
+                cm.__exit__(type(error), error, None)
+            finally:
+                del self._spans[run_id]
 
     def on_tool_start(self, serialized, input_str, *, run_id, parent_run_id=None, tags=None, metadata=None, **kwargs):
         """Called when a tool starts."""
         tool_name = serialized.get("name", "tool") if isinstance(serialized, dict) else "tool"
         span_name = f"tool:{tool_name}"
 
-        with self.sdk.span(span_name) as span:
-            self._spans[run_id] = span
+        cm = self.sdk._span_context_manager(span_name)
+        span = cm.__enter__()
+        self._spans[run_id] = {"span": span, "cm": cm}
 
-            # Add metadata
-            if metadata:
-                span.set_tag("langchain.metadata", metadata)
-            if tags:
-                span.set_tag("langchain.tags", tags)
+        # Add metadata
+        if metadata:
+            span.set_tag("langchain.metadata", metadata)
+        if tags:
+            span.set_tag("langchain.tags", tags)
 
-            # Add input (redacted if configured)
-            if input_str and not self.redact_prompts:
+        # Add input (redacted if configured) and canonical inputs
+        if input_str and not self.redact_prompts:
+            try:
+                # Serialize LangChain objects for storage
+                serialized_input = self._serialize_langchain_data(input_str)
+                span.set_tag("langchain.tool_input", str(serialized_input)[:1000])
+                span.inputs = {"tool_input": serialized_input}
+            except Exception:
                 span.set_tag("langchain.tool_input", str(input_str)[:1000])
 
     def on_tool_end(self, output, *, run_id, **kwargs):
         """Called when a tool ends successfully."""
         if run_id in self._spans:
-            span = self._spans[run_id]
-            # Add output (redacted if configured)
+            span = self._spans[run_id]["span"]
+            cm = self._spans[run_id]["cm"]
+            # Add output (redacted if configured) and canonical outputs
             if output and not self.redact_outputs:
-                span.set_tag("langchain.tool_output", str(output)[:1000])
+                try:
+                    # Serialize LangChain objects for storage
+                    serialized_output = self._serialize_langchain_data(output)
+                    span.set_tag("langchain.tool_output", str(serialized_output)[:1000])
+                    span.outputs = {"tool_output": serialized_output}
+                except Exception:
+                    span.set_tag("langchain.tool_output", str(output)[:1000])
+            cm.__exit__(None, None, None)
             del self._spans[run_id]
 
     def on_tool_error(self, error, *, run_id, **kwargs):
         """Called when a tool errors."""
         if run_id in self._spans:
-            span = self._spans[run_id]
+            span = self._spans[run_id]["span"]
+            cm = self._spans[run_id]["cm"]
             span.set_tag("langchain.error", str(error))
             span.set_tag("langchain.error_type", type(error).__name__)
-            del self._spans[run_id]
+            try:
+                cm.__exit__(type(error), error, None)
+            finally:
+                del self._spans[run_id]
 
     def on_retriever_start(self, serialized, query, *, run_id, parent_run_id=None, tags=None, metadata=None, **kwargs):
         """Called when a retriever starts."""
         retriever_name = serialized.get("name", "retriever") if isinstance(serialized, dict) else "retriever"
         span_name = f"retriever:{retriever_name}"
 
-        with self.sdk.span(span_name) as span:
-            self._spans[run_id] = span
+        cm = self.sdk._span_context_manager(span_name)
+        span = cm.__enter__()
+        self._spans[run_id] = {"span": span, "cm": cm}
 
-            # Add metadata
-            if metadata:
-                span.set_tag("langchain.metadata", metadata)
-            if tags:
-                span.set_tag("langchain.tags", tags)
+        # Add metadata
+        if metadata:
+            span.set_tag("langchain.metadata", metadata)
+        if tags:
+            span.set_tag("langchain.tags", tags)
 
-            # Add query (redacted if configured)
-            if query and not self.redact_prompts:
+        # Add query (redacted if configured) and canonical inputs
+        if query and not self.redact_prompts:
+            try:
+                # Serialize LangChain objects for storage
+                serialized_query = self._serialize_langchain_data(query)
+                span.set_tag("langchain.query", str(serialized_query)[:1000])
+                span.inputs = {"retriever_query": serialized_query}
+            except Exception:
                 span.set_tag("langchain.query", str(query)[:1000])
 
     def on_retriever_end(self, documents, *, run_id, **kwargs):
         """Called when a retriever ends successfully."""
         if run_id in self._spans:
-            span = self._spans[run_id]
-            # Add document count
+            span = self._spans[run_id]["span"]
+            cm = self._spans[run_id]["cm"]
+            # Add document count and canonical outputs summary
             if documents:
                 span.set_tag("langchain.document_count", len(documents))
-                # Don't capture full documents for privacy/security
+                try:
+                    span.outputs = {"retriever_document_count": len(documents)}
+                except Exception:
+                    pass
+            cm.__exit__(None, None, None)
             del self._spans[run_id]
 
     def on_retriever_error(self, error, *, run_id, **kwargs):
         """Called when a retriever errors."""
         if run_id in self._spans:
-            span = self._spans[run_id]
+            span = self._spans[run_id]["span"]
+            cm = self._spans[run_id]["cm"]
             span.set_tag("langchain.error", str(error))
             span.set_tag("langchain.error_type", type(error).__name__)
-            del self._spans[run_id]
+            try:
+                cm.__exit__(type(error), error, None)
+            finally:
+                del self._spans[run_id]
+
+    def _serialize_langchain_data(self, data):
+        """Serialize LangChain objects to JSON-serializable format.
+        
+        Args:
+            data: LangChain object or data to serialize
+            
+        Returns:
+            JSON-serializable representation of the data
+        """
+        try:
+            # Handle None first
+            if data is None:
+                return None
+            
+            # Handle specific LangChain objects first
+            if hasattr(data, 'tool') and hasattr(data, 'tool_input'):
+                # ToolAgentAction
+                return {
+                    "type": "ToolAgentAction",
+                    "tool": data.tool,
+                    "tool_input": self._serialize_langchain_data(data.tool_input),
+                    "log": getattr(data, 'log', ''),
+                    "message_log": [self._serialize_langchain_data(msg) for msg in getattr(data, 'message_log', [])],
+                    "tool_call_id": getattr(data, 'tool_call_id', None)
+                }
+            elif hasattr(data, '__class__') and 'ToolAgentAction' in str(data.__class__):
+                # Additional check for ToolAgentAction objects
+                return {
+                    "type": "ToolAgentAction",
+                    "tool": getattr(data, 'tool', ''),
+                    "tool_input": self._serialize_langchain_data(getattr(data, 'tool_input', {})),
+                    "log": getattr(data, 'log', ''),
+                    "message_log": [self._serialize_langchain_data(msg) for msg in getattr(data, 'message_log', [])],
+                    "tool_call_id": getattr(data, 'tool_call_id', None)
+                }
+            elif hasattr(data, 'content'):
+                # Message objects (AIMessage, HumanMessage, SystemMessage, etc.)
+                return {
+                    "type": type(data).__name__,
+                    "content": data.content,
+                    "additional_kwargs": getattr(data, 'additional_kwargs', {}),
+                    "response_metadata": getattr(data, 'response_metadata', {}),
+                    "id": getattr(data, 'id', None)
+                }
+            elif hasattr(data, 'messages'):
+                # ChatPromptValue
+                return {
+                    "type": type(data).__name__,
+                    "messages": [self._serialize_langchain_data(msg) for msg in data.messages]
+                }
+            elif isinstance(data, (str, int, float, bool)):
+                # Primitive types
+                return data
+            elif isinstance(data, list):
+                # List of objects
+                return [self._serialize_langchain_data(item) for item in data]
+            elif isinstance(data, dict):
+                # Dictionary
+                return {k: self._serialize_langchain_data(v) for k, v in data.items()}
+            elif hasattr(data, '__dict__'):
+                # Generic object with attributes - be more selective about what we include
+                serializable_attrs = {}
+                for k, v in data.__dict__.items():
+                    if not k.startswith('_'):
+                        try:
+                            serializable_attrs[k] = self._serialize_langchain_data(v)
+                        except Exception:
+                            serializable_attrs[k] = str(v)
+                
+                return {
+                    "type": type(data).__name__,
+                    "data": serializable_attrs
+                }
+            else:
+                # Fallback to string representation
+                return str(data)
+        except Exception as e:
+            # Fallback to string representation with error info
+            return f"<SerializationError: {type(data).__name__} - {str(e)}>"
 
 
 def get_vaquero_handler(
