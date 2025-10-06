@@ -138,7 +138,7 @@ Enable auto-instrumentation for specific modules only:
 import vaquero
 
 # Configure selective auto-instrumentation
-vaquero.configure(
+vaquero.init(
     api_key="your-api-key",
     project_id="your-project-id",
     auto_instrument_modules=[
@@ -161,7 +161,7 @@ import vaquero
 import openai
 
 # Enable comprehensive OpenAI tracing
-vaquero.configure(
+vaquero.init(
     api_key="your-api-key",
     project_id="your-project-id",
     auto_instrument_llm=True,
@@ -196,7 +196,7 @@ import vaquero
 import anthropic
 
 # Anthropic calls are also automatically traced
-vaquero.configure(
+vaquero.init(
     api_key="your-api-key",
     project_id="your-project-id",
     auto_instrument_llm=True
@@ -225,7 +225,7 @@ import vaquero
 from fastapi import FastAPI
 
 # Enable FastAPI auto-instrumentation
-vaquero.configure(
+vaquero.init(
     api_key="your-api-key",
     project_id="your-project-id",
     auto_instrument_frameworks=["fastapi"]
@@ -257,7 +257,7 @@ import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
 
 # Enable Django auto-instrumentation
-vaquero.configure(
+vaquero.init(
     api_key="your-api-key",
     project_id="your-project-id",
     auto_instrument_frameworks=["django"]
@@ -287,7 +287,7 @@ Control auto-instrumentation overhead:
 import vaquero
 
 # Configure sampling for high-traffic applications
-vaquero.configure(
+vaquero.init(
     api_key="your-api-key",
     project_id="your-project-id",
     auto_instrument_llm=True,
@@ -414,14 +414,18 @@ except ImportError:
 ### "Performance degradation"
 ```python
 # Reduce sampling rate
-vaquero.configure(
+vaquero.init(
+    api_key="your-api-key",
+    project_id="your-project-id",
     llm_sampling_rate=0.05,    # 5% of LLM calls
     http_sampling_rate=0.02,   # 2% of HTTP requests
     database_sampling_rate=0.1 # 10% of database operations
 )
 
 # Or disable specific instrumentations
-vaquero.configure(
+vaquero.init(
+    api_key="your-api-key",
+    project_id="your-project-id",
     auto_instrument_llm=False,  # Disable LLM tracing
     auto_instrument_http=True   # Keep HTTP tracing
 )

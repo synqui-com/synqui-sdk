@@ -75,10 +75,7 @@
     <h4>2. Configure</h4>
     <pre class="code-block">import vaquero
 
-vaquero.configure(
-    api_key="your-api-key",
-    project_id="your-project-id"
-)</pre>
+vaquero.init(api_key="your-api-key")</pre>
   </div>
 
   <div class="card">
@@ -191,7 +188,7 @@ pip install -e .</pre>
 import vaquero
 
 # Configure once
-vaquero.configure(api_key="your-key", project_id="your-project")
+vaquero.init(api_key="your-key")
 
 @vaquero.trace("data_processor")
 def process_data(data):
@@ -231,7 +228,7 @@ async with vaquero.span("complex_operation") as span:
 ### Auto-Instrumentation (Zero Code Changes!)
 ```python
 # Enable LLM auto-instrumentation
-vaquero.configure(auto_instrument_llm=True)
+vaquero.init(api_key="your-key", auto_instrument_llm=True)
 
 # Now any LLM calls are automatically traced!
 import openai
@@ -290,7 +287,7 @@ def main_process(data):
 
 config = SDKConfig(
     api_key="your-api-key",
-    project_id="your-project-id",
+    project_id="your-project-id",  # Optional - auto-provisioned
     batch_size=100,        # Optimize for your workload
     flush_interval=5.0,    # Balance latency vs efficiency
     max_retries=3,         # Handle transient failures
@@ -298,7 +295,7 @@ config = SDKConfig(
     tags={"team": "ml", "env": "prod"}  # Global metadata
 )
 
-vaquero.configure_from_config(config)</pre>
+vaquero.init(config=config)</pre>
 </div>
 
 ### Environment Variables
@@ -312,7 +309,7 @@ vaquero.configure_from_config(config)</pre>
     <code>VAQUERO_AUTO_INSTRUMENT_LLM=true</code>
   </div>
   <pre class="code-block">import vaquero
-vaquero.configure_from_env()  # Loads from env vars</pre>
+vaquero.init()  # Loads from env vars</pre>
 </div>
 
 ### Error Handling & Resilience
@@ -375,8 +372,8 @@ span.set_attribute("custom_metric", value)</pre>
       <tr>
         <td><code>project_id</code></td>
         <td>string</td>
-        <td>Required</td>
-        <td>Your project identifier</td>
+        <td>Optional</td>
+        <td>Your project identifier (auto-provisioned)</td>
       </tr>
       <tr>
         <td><code>batch_size</code></td>
@@ -395,6 +392,24 @@ span.set_attribute("custom_metric", value)</pre>
         <td>bool</td>
         <td>true</td>
         <td>Auto-capture LLM calls</td>
+      </tr>
+      <tr>
+        <td><code>capture_system_prompts</code></td>
+        <td>bool</td>
+        <td>true</td>
+        <td>Capture LLM system prompts</td>
+      </tr>
+      <tr>
+        <td><code>capture_code</code></td>
+        <td>bool</td>
+        <td>true</td>
+        <td>Capture source code for analysis</td>
+      </tr>
+      <tr>
+        <td><code>mode</code></td>
+        <td>string</td>
+        <td>"development"</td>
+        <td>Operating mode ("development" or "production")</td>
       </tr>
     </tbody>
   </table>

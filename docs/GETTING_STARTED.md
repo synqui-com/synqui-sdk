@@ -30,14 +30,14 @@ For applications that work with a single project, use a project-scoped API key:
 
 ```python
 import vaquero
-import os
 
-# Set environment variables
-os.environ["VAQUERO_API_KEY"] = "cf_your-project-scoped-key-here"
-os.environ["VAQUERO_ENDPOINT"] = "https://api.vaquero.com"
-
-# Initialize SDK with development mode (reads from environment variables)
+# Simple initialization (recommended)
 vaquero.init(api_key="cf_your-project-scoped-key-here")
+
+# Or set environment variable
+import os
+os.environ["VAQUERO_API_KEY"] = "cf_your-project-scoped-key-here"
+vaquero.init()  # Uses environment variable
 ```
 
 #### Option B: General API Key + Project ID
@@ -96,8 +96,8 @@ Vaquero can automatically instrument popular LLM libraries (OpenAI, Anthropic, e
 ```python
 import vaquero
 
-# Enable auto-instrumentation
-vaquero.configure(
+# Enable auto-instrumentation (enabled by default in development mode)
+vaquero.init(
     api_key="your-api-key",
     project_id="your-project-id",
     auto_instrument_llm=True,  # Automatically instrument LLM calls
@@ -184,8 +184,12 @@ config = SDKConfig(
     capture_inputs=True,
     capture_outputs=True,
     capture_errors=True,
+    capture_tokens=True,
     environment="production",
-    debug=False
+    debug=False,
+    auto_instrument_llm=False,  # Disable for production
+    capture_system_prompts=False,  # Disable for privacy
+    mode="production"
 )
 
 vaquero.init(config=config)
@@ -398,7 +402,11 @@ prod_config = SDKConfig(
     flush_interval=10.0,
     debug=False,
     capture_inputs=False,  # Disable for privacy
-    capture_outputs=False  # Disable for privacy
+    capture_outputs=False,  # Disable for privacy
+    capture_tokens=True,  # Keep token tracking for billing
+    auto_instrument_llm=False,  # Disable for production
+    capture_system_prompts=False,  # Disable for privacy
+    mode="production"
 )
 ```
 
@@ -416,7 +424,7 @@ prod_config = SDKConfig(
 Enable debug mode to see detailed SDK logs:
 
 ```python
-vaquero.configure(
+vaquero.init(
     api_key="your-api-key",
     project_id="your-project-id",
     debug=True

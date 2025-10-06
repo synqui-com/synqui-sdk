@@ -24,6 +24,34 @@ Configuration class for the Vaquero SDK.
 ```python
 @dataclass
 class SDKConfig:
+    """SDK configuration settings.
+
+    This class contains all the configuration options for the Vaquero SDK.
+    It supports environment variable configuration and provides sensible defaults.
+
+    Args:
+        api_key: API key for authentication with Vaquero
+        project_id: Project ID to associate traces with
+        endpoint: Vaquero API endpoint URL
+        batch_size: Number of events to batch before sending
+        flush_interval: Interval in seconds to flush pending events
+        max_retries: Maximum number of retry attempts for failed requests
+        timeout: Request timeout in seconds
+        capture_inputs: Whether to capture function inputs
+        capture_outputs: Whether to capture function outputs
+        capture_errors: Whether to capture error information
+        capture_tokens: Whether to capture token counts
+        environment: Environment name (development, staging, production)
+        debug: Enable debug logging
+        enabled: Whether the SDK is enabled
+        tags: Global tags to add to all traces
+        auto_instrument_llm: Whether to automatically instrument LLM libraries
+        capture_system_prompts: Whether to automatically capture system prompts
+        detect_agent_frameworks: Whether to auto-detect agent frameworks
+        capture_code: Whether to capture source code and docstrings for analysis
+        mode: Operating mode ("development" or "production")
+    """
+
     api_key: str
     project_id: str
     endpoint: str = "https://api.vaquero.app"
@@ -34,15 +62,22 @@ class SDKConfig:
     capture_inputs: bool = True
     capture_outputs: bool = True
     capture_errors: bool = True
+    capture_tokens: bool = True
     environment: str = "development"
     debug: bool = False
     enabled: bool = True
+    tags: Dict[str, str] = field(default_factory=dict)
+    auto_instrument_llm: bool = True
+    capture_system_prompts: bool = True
+    detect_agent_frameworks: bool = True
+    capture_code: bool = True
+    mode: str = "development"
 ```
 
 #### Parameters
 
-- **api_key** (str): Your Vaquero API key
-- **project_id** (str): Your Vaquero project ID
+- **api_key** (str): Your Vaquero API key (required when enabled)
+- **project_id** (str): Project ID to associate traces with (can be auto-provisioned)
 - **endpoint** (str): API endpoint URL (default: "https://api.vaquero.app")
 - **batch_size** (int): Number of traces to batch before sending (default: 100)
 - **flush_interval** (float): Time in seconds between batch flushes (default: 5.0)
@@ -51,35 +86,42 @@ class SDKConfig:
 - **capture_inputs** (bool): Whether to capture function inputs (default: True)
 - **capture_outputs** (bool): Whether to capture function outputs (default: True)
 - **capture_errors** (bool): Whether to capture error information (default: True)
+- **capture_tokens** (bool): Whether to capture token counts (default: True)
 - **environment** (str): Environment name (default: "development")
 - **debug** (bool): Enable debug logging (default: False)
 - **enabled** (bool): Enable/disable the SDK (default: True)
+- **tags** (Dict[str, str]): Global tags to add to all traces (default: empty dict)
+- **auto_instrument_llm** (bool): Whether to automatically instrument LLM libraries (default: True)
+- **capture_system_prompts** (bool): Whether to automatically capture system prompts (default: True)
+- **detect_agent_frameworks** (bool): Whether to auto-detect agent frameworks (default: True)
+- **capture_code** (bool): Whether to capture source code and docstrings for analysis (default: True)
+- **mode** (str): Operating mode ("development" or "production") (default: "development")
 
 ### Configuration Functions
 
-#### `init(api_key, project_id, **kwargs)`
+#### `init(api_key, project_id, endpoint, mode, **overrides)`
 
-Initialize the global SDK instance with simplified configuration.
+Initialize the global SDK instance with simplified configuration using presets.
 
 ```python
+# Simple development setup (recommended)
+vaquero.init(api_key="your-api-key")
+
+# Production setup
 vaquero.init(
     api_key="your-api-key",
-    project_id="your-project-id",
-    endpoint="https://api.vaquero.com",
-    mode="development"  # or "production"
+    mode="production"
 )
-```
 
-#### `configure_from_config(config: SDKConfig)`
-
-Initialize the SDK from an SDKConfig object.
-
-```python
-config = SDKConfig(
+# Custom configuration
+vaquero.init(
     api_key="your-api-key",
-    project_id="your-project-id"
+    project_id="your-project-id",  # Optional - auto-provisioned if missing
+    endpoint="https://api.vaquero.app",  # Optional
+    mode="development",  # or "production"
+    capture_inputs=False,  # Custom override
+    batch_size=50
 )
-vaquero.init(config=config)
 ```
 
 #### `configure_from_env()`
@@ -91,8 +133,8 @@ vaquero.init()  # Uses VAQUERO_* environment variables
 ```
 
 Environment variables:
-- `VAQUERO_API_KEY`
-- `VAQUERO_PROJECT_ID`
+- `VAQUERO_API_KEY` (required)
+- `VAQUERO_PROJECT_ID` (optional - auto-provisioned)
 - `VAQUERO_ENDPOINT`
 - `VAQUERO_BATCH_SIZE`
 - `VAQUERO_FLUSH_INTERVAL`
@@ -101,9 +143,30 @@ Environment variables:
 - `VAQUERO_CAPTURE_INPUTS`
 - `VAQUERO_CAPTURE_OUTPUTS`
 - `VAQUERO_CAPTURE_ERRORS`
+- `VAQUERO_CAPTURE_TOKENS`
 - `VAQUERO_ENVIRONMENT`
 - `VAQUERO_DEBUG`
 - `VAQUERO_ENABLED`
+- `VAQUERO_TAGS` (JSON string)
+- `VAQUERO_AUTO_INSTRUMENT_LLM`
+- `VAQUERO_CAPTURE_SYSTEM_PROMPTS`
+- `VAQUERO_DETECT_AGENT_FRAMEWORKS`
+- `VAQUERO_CAPTURE_CODE`
+- `VAQUERO_MODE`
+
+#### `configure(...)` (Legacy)
+
+Legacy configuration function - `init()` is recommended for new code.
+
+```python
+# Legacy configuration (still supported)
+vaquero.configure(
+    api_key="your-api-key",
+    project_id="your-project-id",
+    capture_inputs=True,
+    debug=True
+)
+```
 
 ## Core SDK
 
@@ -118,6 +181,7 @@ class VaqueroSDK:
     def span(self, operation_name: str, **kwargs)
     def flush(self)
     def shutdown(self)
+    def get_stats(self) -> dict
 ```
 
 #### Methods
@@ -167,6 +231,16 @@ Manually flush pending traces.
 ##### `shutdown()`
 
 Shutdown the SDK and flush remaining traces.
+
+##### `get_stats() -> dict`
+
+Get SDK statistics and metrics.
+
+```python
+stats = sdk.get_stats()
+print(f"Traces sent: {stats['traces_sent']}")
+print(f"Queue size: {stats['queue_size']}")
+```
 
 ## Tracing
 

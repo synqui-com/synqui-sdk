@@ -8,27 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Initial SDK implementation
-- Core tracing functionality
-- Batch processing system
-- Error handling and circuit breaker
-- Memory management
+- Initial SDK implementation with simplified `init()` API
+- Core tracing functionality with decorators and context managers
+- Batch processing system with configurable batch sizes
+- Error handling and circuit breaker patterns
+- Memory management and monitoring
+- Automatic LLM instrumentation (OpenAI, Anthropic, etc.)
+- System prompt and code capture capabilities
 - Comprehensive test suite
 - Documentation and examples
+- Mode presets (development/production) for easy configuration
 
 ## [0.1.0] - 2024-01-01
 
 ### Added
-- Initial release of Vaquero Python SDK
+- Initial release of Vaquero Python SDK with simplified `init()` API
 - Basic tracing decorators for sync and async functions
 - Manual span creation with context managers
 - Batch processing with configurable batch sizes
 - Circuit breaker pattern for API calls
 - Memory management and garbage collection
-- Comprehensive configuration system
+- Comprehensive configuration system with mode presets
 - Environment variable support
 - Error handling and retry logic
 - Performance monitoring capabilities
+- Automatic LLM instrumentation (OpenAI, Anthropic, etc.)
+- System prompt and code capture capabilities
 - Framework integration examples (FastAPI, Django, Flask)
 - Comprehensive documentation
 - Usage examples and best practices
@@ -39,25 +44,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Batch Processing**: Efficient batch transmission of trace data
 - **Error Handling**: Robust error handling with circuit breakers
 - **Memory Management**: Automatic memory monitoring and cleanup
-- **Configuration**: Flexible configuration system
+- **Configuration**: Flexible configuration system with mode presets
 - **Framework Integration**: Easy integration with popular Python frameworks
+- **LLM Instrumentation**: Automatic tracing of LLM API calls
 - **Performance**: Minimal performance impact on applications
 - **Reliability**: Graceful degradation and retry mechanisms
 
 ### API
+- `vaquero.init()` - Simplified SDK initialization
 - `@vaquero.trace()` - Function tracing decorator
 - `vaquero.span()` - Manual span context manager
-- `vaquero.configure()` - SDK configuration
 - `vaquero.flush()` - Manual trace flushing
 - `vaquero.shutdown()` - SDK shutdown
+- `vaquero.get_stats()` - SDK statistics and metrics
 
 ### Configuration Options
-- API key and project ID
+- API key and project ID (with auto-provisioning)
 - Batch size and flush interval
 - Retry logic and timeouts
-- Input/output capture settings
+- Input/output/token capture settings
 - Environment and debug settings
 - Circuit breaker configuration
+- LLM auto-instrumentation settings
+- Mode presets (development/production)
 
 ### Supported Python Versions
 - Python 3.8+
