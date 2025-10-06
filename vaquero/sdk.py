@@ -787,13 +787,30 @@ def get_current_sdk() -> Optional[VaqueroSDK]:
 
 def initialize(config: SDKConfig) -> VaqueroSDK:
     """Initialize the global SDK instance.
-    
+
     Args:
         config: SDK configuration
-        
+
     Returns:
         Initialized SDK instance
     """
     global _sdk_instance
     _sdk_instance = VaqueroSDK(config)
+    return _sdk_instance
+
+
+def get_global_instance() -> VaqueroSDK:
+    """Get the global SDK instance.
+
+    Returns:
+        Global SDK instance
+
+    Raises:
+        RuntimeError: If no global instance has been created
+    """
+    if _sdk_instance is None:
+        raise RuntimeError(
+            "No global SDK instance available. "
+            "Call vaquero.init() or VaqueroSDK.initialize() first."
+        )
     return _sdk_instance

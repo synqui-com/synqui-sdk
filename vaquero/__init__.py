@@ -36,11 +36,18 @@ __email__ = "team@vaquero.com"
 
 from typing import Optional
 
-from .sdk import VaqueroSDK
+from .sdk import VaqueroSDK, get_global_instance
 from .config import SDKConfig, configure, configure_from_env, init
 from .context import get_current_span
 from .decorators import trace as _trace_decorator
 from .workflow import workflow, Workflow
+
+# Optional integrations (only import if dependencies are available)
+try:
+    from .langchain import VaqueroCallbackHandler, get_vaquero_handler
+    _LANGCHAIN_AVAILABLE = True
+except ImportError:
+    _LANGCHAIN_AVAILABLE = False
 
 # Default SDK instance
 _default_sdk: Optional[VaqueroSDK] = None
@@ -101,6 +108,7 @@ def shutdown():
         _default_sdk.shutdown()
 
 
+# Build __all__ list dynamically to include optional integrations
 __all__ = [
     "init",
     "configure",
@@ -111,11 +119,16 @@ __all__ = [
     "flush",
     "shutdown",
     "get_current_span",
+    "get_global_instance",
     "SDKConfig",
     "VaqueroSDK",
     "Workflow",
     "__version__",
 ]
+
+# Add LangChain integration if available
+if _LANGCHAIN_AVAILABLE:
+    __all__.extend(["VaqueroCallbackHandler", "get_vaquero_handler"])
 
 # Register automatic shutdown for the global SDK instance
 import atexit
