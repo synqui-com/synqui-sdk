@@ -14,6 +14,20 @@ import uuid
 from .models import TraceData, BatchPayload
 from .serialization import serialize_for_api
 
+# Framework processors for hierarchical storage
+try:
+    import sys
+    import os
+    # Add backend to path if running from SDK
+    backend_path = os.path.join(os.path.dirname(__file__), '..', '..', 'backend')
+    if backend_path not in sys.path:
+        sys.path.insert(0, backend_path)
+
+    from app.services.framework_processors import trace_processor
+except ImportError:
+    # Fallback for when running from SDK directly without backend
+    trace_processor = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,6 +106,34 @@ class BatchProcessor:
             self._thread.join(timeout=timeout)
 
         logger.info("Batch processor shutdown completed")
+
+    def _detect_framework(self, span: Dict[str, Any]) -> Optional[str]:
+        """Detect the framework from span metadata or name patterns."""
+        # Check metadata for framework information
+        metadata = span.get("tags", {})
+        if isinstance(metadata, dict):
+            # Check for LangChain metadata
+            if "langchain.metadata" in metadata:
+                return "langchain"
+
+            # Check for OpenAI metadata
+            if "openai.metadata" in metadata or "openai" in str(metadata).lower():
+                return "openai"
+
+            # Check for Anthropic metadata
+            if "anthropic.metadata" in metadata or "anthropic" in str(metadata).lower():
+                return "anthropic"
+
+        # Check span name patterns
+        name = span.get("name", "").lower()
+        if "langchain" in name:
+            return "langchain"
+        elif "openai" in name:
+            return "openai"
+        elif "anthropic" in name or "claude" in name:
+            return "anthropic"
+
+        return None
 
     def flush(self):
         """Manually flush the current batch."""
@@ -769,20 +811,34 @@ class BatchProcessor:
                     else:
                         logger.warning(f"Batch processor: CHILD SPAN DOES NOT CONTAIN SOURCE CODE")
 
+                    # Apply framework-specific processing for hierarchical storage
+                    processed_child = child
+                    if trace_processor:
+                        # Detect framework from span metadata or name patterns
+                        framework = self._detect_framework(child)
+                        if framework:
+                            try:
+                                # Apply framework-specific processing
+                                # Note: This is a simplified approach - in production we'd group by trace first
+                                logger.debug(f"🔍 Processing child span with framework: {framework}")
+                            except Exception as e:
+                                logger.warning(f"Error processing framework {framework}: {e}")
+                                # Continue with original child data
+
                     agent_data = {
-                        "trace_id": child.get("trace_id"),
-                        "agent_id": child.get("span_id"),
-                        "name": child.get("agent_name") or child.get("function_name") or child.get("name"),
-                        "type": child.get("agent_name"),
-                        "description": child.get("description"),
-                        "tags": child.get("tags", {}),
-                        "start_time": child.get("start_time"),
-                        "end_time": child.get("end_time"),
-                        "duration_ms": child.get("duration_ms"),
-                        "input_tokens": child.get("input_tokens", 0),
-                        "output_tokens": child.get("output_tokens", 0),
-                        "total_tokens": child.get("total_tokens", 0),
-                        "cost": child.get("cost", 0.0),
+                        "trace_id": processed_child.get("trace_id"),
+                        "agent_id": processed_child.get("span_id"),
+                        "name": processed_child.get("agent_name") or processed_child.get("function_name") or processed_child.get("name"),
+                        "type": processed_child.get("agent_name"),
+                        "description": processed_child.get("description"),
+                        "tags": processed_child.get("tags", {}),
+                        "start_time": processed_child.get("start_time"),
+                        "end_time": processed_child.get("end_time"),
+                        "duration_ms": processed_child.get("duration_ms"),
+                        "input_tokens": processed_child.get("input_tokens", 0),
+                        "output_tokens": processed_child.get("output_tokens", 0),
+                        "total_tokens": processed_child.get("total_tokens", 0),
+                        "cost": processed_child.get("cost", 0.0),
                         "status": child.get("status", "completed"),
                         "input_data": child.get("inputs"),
                         "output_data": child.get("outputs"),

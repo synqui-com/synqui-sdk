@@ -15,6 +15,7 @@ from .models import TraceData, SpanStatus
 from .context import span_context, create_child_span
 from .serialization import safe_serialize
 from .batch_processor import BatchProcessor
+from .trace_collector import TraceCollector
 from .token_counter import count_function_tokens, extract_tokens_from_llm_response
 from .auto_instrumentation import AutoInstrumentationEngine
 
@@ -45,6 +46,7 @@ class VaqueroSDK:
         self.config = config
         self._event_queue: Queue = Queue()
         self._batch_processor: Optional[BatchProcessor] = None
+        self._trace_collector: Optional[TraceCollector] = None
         self._enabled = config.enabled
         self._auto_instrumentation: Optional[AutoInstrumentationEngine] = None
 
@@ -53,9 +55,9 @@ class VaqueroSDK:
             logging.basicConfig(level=logging.DEBUG)
             logger.setLevel(logging.DEBUG)
 
-        # Start batch processor if enabled
+        # Start trace collector if enabled
         if self._enabled:
-            self._start_batch_processor()
+            self._start_trace_collector()
 
             # Initialize auto-instrumentation if enabled
             if config.auto_instrument_llm:
@@ -67,12 +69,11 @@ class VaqueroSDK:
 
         logger.info(f"Vaquero SDK initialized (enabled={self._enabled})")
 
-    def _start_batch_processor(self):
-        """Start the background batch processor."""
-        if self._batch_processor is None:
-            self._batch_processor = BatchProcessor(self)
-            self._batch_processor.start()
-            logger.debug("Batch processor started")
+    def _start_trace_collector(self):
+        """Start the simple trace collector."""
+        if self._trace_collector is None:
+            self._trace_collector = TraceCollector(self)
+            logger.debug("Trace collector started")
     
     def _start_auto_instrumentation(self):
         """Start automatic LLM instrumentation."""
@@ -655,7 +656,7 @@ class VaqueroSDK:
             trace_data.total_tokens = 0
 
     def _send_trace(self, trace_data: TraceData):
-        """Send trace data to the batch processor.
+        """Send trace data to the trace collector.
 
         Args:
             trace_data: TraceData instance to send
@@ -664,7 +665,7 @@ class VaqueroSDK:
             logger.debug(f"SDK: Trace sending disabled for {trace_data.agent_name}")
             return
 
-        logger.info(f"SDK: === SENDING TRACE TO BATCH PROCESSOR ===")
+        logger.info(f"SDK: === SENDING TRACE TO TRACE COLLECTOR ===")
         logger.info(f"SDK: Agent name: {trace_data.agent_name}")
         logger.info(f"SDK: Span ID: {trace_data.span_id}")
         logger.info(f"SDK: Status: {trace_data.status}")
@@ -691,14 +692,26 @@ class VaqueroSDK:
             else:
                 logger.info(f"SDK: TRACE DOES NOT CONTAIN DOCSTRING")
 
-            # Queue the trace data
-            logger.info(f"SDK: Queueing trace data to batch processor...")
-            self._event_queue.put(trace_data, timeout=1.0)
-            logger.info(f"SDK: Successfully queued trace: {trace_data.agent_name} ({trace_data.span_id})")
-            logger.debug(f"SDK: Current queue size: {self._event_queue.qsize()}")
+            # Convert TraceData to dictionary for trace collector
+            span_data = trace_data.to_dict()
+            
+            # Check if this is a root span (workflow span)
+            if not trace_data.parent_span_id:
+                # This is a root span - start a new trace
+                logger.info(f"SDK: Starting new trace: {trace_data.span_id}")
+                self._trace_collector.start_trace(trace_data.span_id, span_data)
+            else:
+                # This is a child span - add to current trace
+                logger.info(f"SDK: Adding span to current trace: {trace_data.agent_name}")
+                self._trace_collector.add_span(span_data)
+            
+            # If this is a root span and it's finished, end the trace
+            if not trace_data.parent_span_id and trace_data.status != SpanStatus.RUNNING:
+                logger.info(f"SDK: Ending trace: {trace_data.span_id}")
+                self._trace_collector.end_trace(trace_data.span_id, span_data)
 
         except Exception as e:
-            logger.error(f"SDK: FAILED to queue trace data for {trace_data.agent_name}: {e}", exc_info=True)
+            logger.error(f"SDK: FAILED to send trace data for {trace_data.agent_name}: {e}", exc_info=True)
 
     def _set_prompt_fields(self, trace_data: TraceData, kwargs: Dict[str, Any]) -> None:
         """Populate explicit prompt fields on the trace if provided.
@@ -750,10 +763,19 @@ class VaqueroSDK:
         # Stop auto-instrumentation
         self._stop_auto_instrumentation()
         
+        # Shutdown batch processor if it exists (for backward compatibility)
         if self._batch_processor:
             self._batch_processor.shutdown()
             self._batch_processor = None
-            logger.info("SDK shutdown completed")
+        
+        # Shutdown trace collector
+        if self._trace_collector:
+            # Send any remaining traces
+            for trace_id in list(self._trace_collector._traces.keys()):
+                self._trace_collector.end_trace(trace_id, {})
+            self._trace_collector = None
+            
+        logger.info("SDK shutdown completed")
 
     def is_enabled(self) -> bool:
         """Check if the SDK is enabled.
