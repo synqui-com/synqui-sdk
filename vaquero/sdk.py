@@ -14,9 +14,7 @@ from .config import SDKConfig
 from .models import TraceData, SpanStatus
 from .context import span_context, create_child_span
 from .serialization import safe_serialize
-from .batch_processor import BatchProcessor
-from .trace_collector import TraceCollector
-from .trace_collector_v2 import TraceCollectorV2
+from .trace_collector_unified import UnifiedTraceCollector
 from .token_counter import count_function_tokens, extract_tokens_from_llm_response
 from .auto_instrumentation import AutoInstrumentationEngine
 
@@ -46,8 +44,7 @@ class VaqueroSDK:
         """
         self.config = config
         self._event_queue: Queue = Queue()
-        self._batch_processor: Optional[BatchProcessor] = None
-        self._trace_collector: Optional[TraceCollectorV2] = None
+        self._trace_collector: Optional[UnifiedTraceCollector] = None
         self._enabled = config.enabled
         self._auto_instrumentation: Optional[AutoInstrumentationEngine] = None
 
@@ -71,10 +68,10 @@ class VaqueroSDK:
         logger.info(f"Vaquero SDK initialized (enabled={self._enabled})")
 
     def _start_trace_collector(self):
-        """Start the simple trace collector."""
+        """Start the unified trace collector."""
         if self._trace_collector is None:
-            self._trace_collector = TraceCollectorV2(self)
-            logger.debug("Trace collector started")
+            self._trace_collector = UnifiedTraceCollector(self)
+            logger.debug("Unified trace collector started")
     
     def _start_auto_instrumentation(self):
         """Start automatic LLM instrumentation."""
@@ -744,9 +741,9 @@ class VaqueroSDK:
         Args:
             timeout: Maximum time to wait for flush to complete
         """
-        if self._batch_processor:
-            self._batch_processor.flush()
-            logger.debug("Flushed pending traces")
+        if self._trace_collector:
+            # TraceCollectorV2 handles flushing automatically
+            logger.debug("Trace collector handles flushing automatically")
 
     def shutdown(self, timeout: Optional[float] = None):
         """Shutdown the SDK and flush remaining traces.
@@ -757,16 +754,9 @@ class VaqueroSDK:
         # Stop auto-instrumentation
         self._stop_auto_instrumentation()
         
-        # Shutdown batch processor if it exists (for backward compatibility)
-        if self._batch_processor:
-            self._batch_processor.shutdown()
-            self._batch_processor = None
-        
         # Shutdown trace collector
         if self._trace_collector:
-            # Send any remaining traces
-            for trace_id in list(self._trace_collector._traces.keys()):
-                self._trace_collector.end_trace(trace_id, {})
+            self._trace_collector.shutdown()
             self._trace_collector = None
             
         logger.info("SDK shutdown completed")
