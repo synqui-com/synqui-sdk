@@ -184,6 +184,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
                 model_provider = "openai"
             elif "anthropic" in model_name.lower():
                 model_provider = "anthropic"
+            
+            logger.debug(f"Extracted model name: {model_name}, provider: {model_provider}")
 
         span_name = f"llm:{model_name}"
 
@@ -283,17 +285,69 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
             span = self._spans[run_id]["span"]
             cm = self._spans[run_id]["cm"]
 
+            # Debug: Log response type and attributes
+            logger.debug(f"Response type in on_llm_end: {type(response)}")
+            logger.debug(f"Response attributes: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+
+            # Extract model information from response metadata if not already set
+            if hasattr(response, 'response_metadata') and response.response_metadata:
+                response_metadata = response.response_metadata
+                if 'model_name' in response_metadata and not span.model_name:
+                    span.model_name = response_metadata['model_name']
+                    logger.debug(f"Set model name from response metadata: {span.model_name}")
+                
+                # Set model provider based on model name
+                if span.model_name and not span.model_provider:
+                    if "google" in span.model_name.lower() or "gemini" in span.model_name.lower():
+                        span.model_provider = "google"
+                    elif "openai" in span.model_name.lower():
+                        span.model_provider = "openai"
+                    elif "anthropic" in span.model_name.lower():
+                        span.model_provider = "anthropic"
+                    logger.debug(f"Set model provider: {span.model_provider}")
+
             # Extract token usage if available and map to canonical fields
             token_usage = None
 
-            if hasattr(response, 'llm_output') and response.llm_output:
-                # Try different possible locations for token usage in Google Gemini response
+            # Check for Google Gemini usage_metadata first
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                token_usage = response.usage_metadata
+                logger.debug(f"Found token usage in usage_metadata: {token_usage}")
+            elif hasattr(response, 'llm_output') and response.llm_output:
+                # Try different possible locations for token usage in other providers
                 if isinstance(response.llm_output, dict):
                     token_usage = response.llm_output.get('token_usage') or response.llm_output.get('usage')
-
+                logger.debug(f"Found token usage in llm_output: {token_usage}")
+            elif hasattr(response, 'usage'):
                 # Also check if token usage is directly on the response
-                if not token_usage and hasattr(response, 'usage'):
-                    token_usage = response.usage
+                token_usage = response.usage
+                logger.debug(f"Found token usage in usage: {token_usage}")
+            
+            # Check for token usage in generations (for LLMResult objects)
+            if not token_usage and hasattr(response, 'generations') and response.generations:
+                logger.debug(f"Checking generations for token usage: {len(response.generations)} generations")
+                for generation_list in response.generations:
+                    for generation in generation_list:
+                        if hasattr(generation, 'message') and hasattr(generation.message, 'usage_metadata'):
+                            token_usage = generation.message.usage_metadata
+                            logger.debug(f"Found token usage in generation.message.usage_metadata: {token_usage}")
+                            break
+                        elif hasattr(generation, 'usage_metadata'):
+                            token_usage = generation.usage_metadata
+                            logger.debug(f"Found token usage in generation.usage_metadata: {token_usage}")
+                            break
+                    if token_usage:
+                        break
+            
+            # Additional debugging: check if response has any token-related attributes
+            for attr in dir(response):
+                if 'token' in attr.lower() or 'usage' in attr.lower():
+                    try:
+                        value = getattr(response, attr)
+                        if not callable(value):
+                            logger.debug(f"Found token-related attribute {attr}: {value}")
+                    except Exception as e:
+                        logger.debug(f"Error accessing {attr}: {e}")
 
             if token_usage:
                 span.set_tag("langchain.token_usage", token_usage)
@@ -322,6 +376,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
                     span.output_tokens = int(output_tokens)
                     span.total_tokens = int(total_tokens)
 
+                    logger.debug(f"Set token counts - input: {input_tokens}, output: {output_tokens}, total: {total_tokens}")
+
                     # Calculate cost if we have model information
                     if hasattr(span, 'model_name') and span.model_name:
                         # Simple cost calculation - in real implementation would use provider-specific rates
@@ -330,6 +386,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
 
                 except Exception as e:
                     logger.debug(f"Error extracting token usage: {e}")
+            else:
+                logger.debug("No token usage information found in response")
 
             # Add response info (redacted if configured) and canonical outputs
             if hasattr(response, 'generations') and not self.redact_outputs:
