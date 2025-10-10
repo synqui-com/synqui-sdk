@@ -79,7 +79,7 @@ class HierarchicalTraceCollector:
         metadata = span_data.get('metadata', {})
         
         # Check if this is a root workflow span
-        if agent_name in ['langchain_workflow', 'workflow'] or 'workflow' in agent_name.lower():
+        if 'workflow' in agent_name.lower():
             return 'workflow_root'
         
         # Check metadata for stage information
@@ -95,14 +95,11 @@ class HierarchicalTraceCollector:
             if parent_span_id and parent_span_id in self._span_to_agent:
                 return self._span_to_agent[parent_span_id]
             
-            # Default tool grouping based on tool name
+            # Default tool grouping based on tool name - use generic approach
             tool_name = agent_name.replace('tool:', '')
-            if 'validation' in tool_name:
-                return 'validation_agent'
-            elif 'analysis' in tool_name:
-                return 'analysis_agent'
-            elif 'report' in tool_name:
-                return 'report_agent'
+            # Extract the base function name from the tool name
+            base_name = tool_name.split('_')[0] if '_' in tool_name else tool_name
+            return f"{base_name}_agent"
         
         # Check if this is an LLM span
         if agent_name.startswith('llm:'):
@@ -244,7 +241,7 @@ class HierarchicalTraceCollector:
         # Create the final trace structure
         trace_data = {
             'trace_id': trace_id,
-            'name': 'langchain_workflow',
+            'name': 'workflow_root',
             'status': 'completed',
             'session_id': None,
             'start_time': None,

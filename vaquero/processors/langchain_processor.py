@@ -73,19 +73,20 @@ class LangChainProcessor(FrameworkProcessor):
         # Check for explicit stage in metadata - these are logical agents
         stage = metadata.get('stage') or lc_meta.get('stage')
         if stage:
-            if stage == 'validation':
-                return 'validation_agent'
-            elif stage == 'analysis':
-                return 'analysis_agent'
-            elif stage == 'report_generation':
-                return 'report_agent'
+            # Convert stage to agent name format (e.g., 'validation' -> 'validation_agent')
+            return f"{stage}_agent"
 
         # Check for workflow root span - this is also a logical agent
-        if 'workflow' in agent_name.lower() or 'langchain_workflow' in agent_name:
+        if 'workflow' in agent_name.lower():
             return 'workflow_root'
 
-        # Check for direct agent name matches - these are logical agents
-        if agent_name in ['validation_agent', 'analysis_agent', 'report_agent']:
+        # Check if agent_name already looks like a logical agent (ends with '_agent')
+        if agent_name.endswith('_agent'):
+            return agent_name
+
+        # For spans that don't match explicit patterns, check if they're logical agents
+        # This is a heuristic based on the span structure and metadata
+        if self._is_likely_logical_agent(span_data):
             return agent_name
 
         # For internal LangChain components, try to determine parent from context
@@ -108,18 +109,41 @@ class LangChainProcessor(FrameworkProcessor):
 
         # Check for explicit stage in metadata - these are logical agents
         stage = metadata.get('stage') or lc_meta.get('stage')
-        if stage in ['validation', 'analysis', 'report_generation']:
+        if stage:
             return True
 
         # Check for workflow root span - this is also a logical agent
-        if 'workflow' in agent_name.lower() or 'langchain_workflow' in agent_name:
+        if 'workflow' in agent_name.lower():
             return True
 
-        # Check for direct agent name matches - these are logical agents
-        if agent_name in ['validation_agent', 'analysis_agent', 'report_agent']:
+        # Check if agent_name already looks like a logical agent (ends with '_agent')
+        if agent_name.endswith('_agent'):
+            return True
+
+        # Check if this is likely a logical agent based on heuristics
+        if self._is_likely_logical_agent(span_data):
             return True
 
         # All other spans are internal components
+        return False
+
+    def _is_likely_logical_agent(self, span_data: Dict[str, Any]) -> bool:
+        """Heuristic to determine if a span is likely a logical agent."""
+        agent_name = span_data.get('agent_name', '')
+        metadata = span_data.get('metadata', {})
+        tags = span_data.get('tags', {}) or {}
+
+        # Check if it has meaningful metadata that suggests it's a logical agent
+        if metadata.get('stage') or metadata.get('agent_type') == 'logical':
+            return True
+
+        # Check if it's a root-level span with significant duration or complexity
+        if (span_data.get('duration_ms', 0) > 100 or  # Significant duration
+            len(tags) > 3 or  # Multiple tags suggest importance
+            metadata.get('session_id') or  # Has session context
+            'workflow' in agent_name.lower()):  # Workflow-related
+            return True
+
         return False
 
     def _determine_parent_from_context(self, span_data: Dict[str, Any]) -> str:
@@ -129,36 +153,24 @@ class LangChainProcessor(FrameworkProcessor):
         if parent_span_id and parent_span_id in self.span_to_logical:
             return self.span_to_logical[parent_span_id]
 
-        # Fallback heuristics
-        # If this is a tool call, it likely belongs to the most recent logical agent
+        # Fallback heuristics - find the most appropriate parent logical agent
         agent_name = span_data.get('agent_name', '')
 
         if agent_name.startswith('tool:'):
-            if 'validation_agent' in self.logical_agents:
-                return 'validation_agent'
-            elif 'analysis_agent' in self.logical_agents:
-                return 'analysis_agent'
-            elif 'report_agent' in self.logical_agents:
-                return 'report_agent'
+            # Tool calls belong to the most recently created logical agent
+            for logical_agent_name in reversed(list(self.logical_agents.keys())):
+                return logical_agent_name
 
-        # If this is an LLM call, it belongs to the most recent logical agent
         elif agent_name.startswith('llm:'):
-            if 'validation_agent' in self.logical_agents:
-                return 'validation_agent'
-            elif 'analysis_agent' in self.logical_agents:
-                return 'analysis_agent'
-            elif 'report_agent' in self.logical_agents:
-                return 'report_agent'
+            # LLM calls belong to the most recently created logical agent
+            for logical_agent_name in reversed(list(self.logical_agents.keys())):
+                return logical_agent_name
 
-        # For other internal components, use the same logic
-        if 'validation_agent' in self.logical_agents:
-            return 'validation_agent'
-        elif 'analysis_agent' in self.logical_agents:
-            return 'analysis_agent'
-        elif 'report_agent' in self.logical_agents:
-            return 'report_agent'
+        # For other internal components, use the most recently created logical agent
+        if self.logical_agents:
+            return list(self.logical_agents.keys())[-1]
 
-        # Default to unknown for now
+        # Default fallback
         return 'unknown_agent'
     
     def process_trace(self, trace_id: str) -> HierarchicalTrace:
@@ -242,7 +254,7 @@ class LangChainProcessor(FrameworkProcessor):
         
         return HierarchicalTrace(
             trace_id=trace_id,
-            name='langchain_workflow',
+            name='workflow_root',
             agents=agents,
             dependencies=dependencies
         )

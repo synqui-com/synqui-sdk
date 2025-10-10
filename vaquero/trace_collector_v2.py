@@ -134,7 +134,7 @@ class TraceCollectorV2:
 
         # Check if this is a main workflow span - if so, it should be the root of a new trace
         # but only if there's no existing trace with the same session_id
-        if agent_name in ['langchain_workflow', 'workflow'] or 'workflow' in agent_name.lower():
+        if 'workflow' in agent_name.lower() or self._is_workflow_span(agent_name):
             # If we have a session_id, check if there's already a trace for this session
             if session_id:
                 for trace_id, trace_data in self._traces.items():
@@ -180,25 +180,45 @@ class TraceCollectorV2:
             Tuple of (level, component_type)
         """
         # Logical agents - these represent business logic steps
-        logical_agents = {
-            "validation_agent", "analysis_agent", "report_agent",
-            "langchain_workflow", "workflow", "main_workflow",
-            "validation", "analysis", "report", "report_generation"
-        }
+        # Use pattern-based detection instead of hardcoded names
+        logical_agents = set()
+
+        # Check for workflow patterns - generic detection
+        if self._is_workflow_span(agent_name):
+            logical_agents.add(agent_name)
+        # Check for agent patterns (ends with _agent)
+        elif agent_name.endswith('_agent'):
+            logical_agents.add(agent_name)
+        # Check for stage-based agents (created from metadata stages)
+        elif metadata.get('stage'):
+            logical_agents.add(f"{metadata['stage']}_agent")
+        # Check for spans with significant metadata that suggest they're logical agents
+        elif (metadata.get('session_id') or
+              metadata.get('stage') or
+              span_data.get('duration_ms', 0) > 100):
+            logical_agents.add(agent_name)
 
         # Internal components - these are LangChain implementation details
-        internal_components = {
-            "langchain:chain", "langchain:ChatPromptTemplate", "langchain:StrOutputParser",
-            "llm:models/gemini", "llm:gemini", "tool:validation_tool", "tool:analysis_tool",
-            "tool:report_generation_tool", "chain", "prompt_template", "output_parser"
-        }
+        # Use pattern-based detection instead of hardcoded names
+        internal_components = set()
+
+        # Check for known internal LangChain patterns
+        internal_patterns = [
+            "langchain:", "llm:", "tool:", "chain", "prompt_template", "output_parser",
+            "chat_prompt_template", "str_output_parser"
+        ]
+
+        for pattern in internal_patterns:
+            if pattern in agent_name.lower():
+                internal_components.add(agent_name)
+                break
 
         # Check if this is a logical agent
         if (agent_name in logical_agents or
-            any(logical in agent_name.lower() for logical in ["validation", "analysis", "report", "workflow"])):
+            any(logical in agent_name.lower() for logical in ["validation", "analysis", "report"])):
 
             # Special handling for workflow spans
-            if "workflow" in agent_name.lower() or agent_name in ["langchain_workflow"]:
+            if "workflow" in agent_name.lower():
                 return 0, "workflow"  # Root level for workflows
 
             return 1, "logical_agent"
@@ -238,7 +258,7 @@ class TraceCollectorV2:
 
         # Determine trace name - prefer workflow names over agent names
         agent_name = span_data.get("agent_name", "unnamed")
-        if "workflow" in agent_name.lower() or agent_name in ["langchain_workflow", "main_workflow"]:
+        if self._is_workflow_span(agent_name):
             trace_name = agent_name
         else:
             trace_name = f"workflow_{agent_name}"  # Prefix with workflow for non-workflow root spans
@@ -293,14 +313,14 @@ class TraceCollectorV2:
         is_workflow_span = (
             "workflow" in agent_name.lower() or
             "langchain" in agent_name.lower() or
-            agent_name in ["langchain_workflow", "main_workflow", "workflow"]
+            self._is_workflow_span(agent_name)
         )
 
         # Check if current trace name is already a workflow name
         current_is_workflow = (
             "workflow" in current_trace_name.lower() or
             "langchain" in current_trace_name.lower() or
-            current_trace_name in ["langchain_workflow", "main_workflow", "workflow"]
+            self._is_workflow_span(current_trace_name)
         )
 
         logger.debug(f"  is_workflow_span={is_workflow_span}, current_is_workflow={current_is_workflow}")
@@ -450,7 +470,16 @@ class TraceCollectorV2:
                 
         except Exception as e:
             logger.error(f"Error sending trace to API: {e}")
-    
+
+    def _is_workflow_span(self, agent_name: str) -> bool:
+        """Check if an agent name represents a workflow span."""
+        workflow_patterns = [
+            'workflow', 'langchain', 'main_workflow', 'root_workflow',
+            'orchestrator', 'coordinator', 'pipeline', 'process'
+        ]
+
+        return any(pattern in agent_name.lower() for pattern in workflow_patterns)
+
     def shutdown(self) -> None:
         """Shutdown the trace collector and send any remaining traces."""
         logger.info("Shutting down trace collector")
