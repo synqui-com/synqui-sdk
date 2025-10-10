@@ -3,6 +3,7 @@
 import logging
 from typing import Dict, List, Any, Optional
 from .base_processor import FrameworkProcessor, HierarchicalTrace
+from ..cost_calculator import calculate_cost
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +213,7 @@ class LangChainProcessor(FrameworkProcessor):
                 'input_tokens': sum(s.get('input_tokens', 0) for s in agent_data['spans']),
                 'output_tokens': sum(s.get('output_tokens', 0) for s in agent_data['spans']),
                 'total_tokens': sum(s.get('total_tokens', 0) for s in agent_data['spans']),
-                'cost': sum(s.get('cost', 0.0) for s in agent_data['spans']),
+                'cost': model_info.get('cost', 0.0),
                 'tags': {'session_id': agent_session_id} if agent_session_id else {},
                 'input_data': {},
                 'output_data': {},
@@ -267,11 +268,12 @@ class LangChainProcessor(FrameworkProcessor):
         )
     
     def _extract_model_info(self, spans: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Extract model information from spans."""
+        """Extract model information and calculate cost from spans."""
         model_info = {
             'model_name': None,
             'model_provider': None,
-            'model_parameters': None
+            'model_parameters': None,
+            'cost': 0.0
         }
         
         # Debug: Log what's in the spans
@@ -286,6 +288,20 @@ class LangChainProcessor(FrameworkProcessor):
                 model_info['model_name'] = span.get('model_name')
                 model_info['model_provider'] = span.get('model_provider')
                 model_info['model_parameters'] = span.get('model_parameters')
+                
+                # Calculate cost based on token usage
+                input_tokens = span.get('input_tokens', 0)
+                output_tokens = span.get('output_tokens', 0)
+                if input_tokens > 0 or output_tokens > 0:
+                    cost = calculate_cost(
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        model_name=model_info['model_name'],
+                        provider=model_info['model_provider']
+                    )
+                    model_info['cost'] = cost
+                    logger.debug(f"Calculated cost: ${cost:.6f} for {input_tokens} input + {output_tokens} output tokens")
+                
                 logger.debug(f"Found model info: {model_info}")
                 break  # Use the first model info found
         
