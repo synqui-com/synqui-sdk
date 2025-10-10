@@ -20,6 +20,11 @@ except ImportError:
     BaseCallbackHandler = object  # Fallback for type hints
 
 from .sdk import VaqueroSDK, get_global_instance
+from .context import (
+    get_current_span as _vaq_get_current_span,
+    create_child_span as _vaq_create_child_span,
+    span_context as _vaq_span_context,
+)
 
 
 class VaqueroCallbackHandler(BaseCallbackHandler):
@@ -64,19 +69,49 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         # Structure: run_id -> {"span": TraceData, "cm": context_manager}
         self._spans = {}
         self._trace_id = str(uuid.uuid4())
+        # Capture root context (if handler is created inside a vaquero.span)
+        try:
+            _root = _vaq_get_current_span()
+            self._root_trace_id = _root.trace_id if _root else None
+            self._root_span_id = _root.span_id if _root else None
+        except Exception:
+            self._root_trace_id = None
+            self._root_span_id = None
 
     def on_chain_start(self, serialized, inputs, *, run_id, parent_run_id=None, tags=None, metadata=None, **kwargs):
         """Called when a chain starts."""
         span_name = serialized.get("name", "chain") if isinstance(serialized, dict) else "chain"
 
-        # Create and keep the span open until on_chain_end/on_chain_error
-        # Pass parent context to maintain trace hierarchy
-        cm = self.sdk._span_context_manager(
-            f"langchain:{span_name}",
-            metadata=self.parent_context
-        )
-        span = cm.__enter__()
-        self._spans[run_id] = {"span": span, "cm": cm}
+        # Check if we have a current span context from parent workflow (global context)
+        current_span = _vaq_get_current_span()
+        if current_span:
+            # Inherit trace_id from current span context
+            span = _vaq_create_child_span(
+                agent_name=f"langchain:{span_name}",
+                function_name=f"langchain:{span_name}",
+                metadata=self.parent_context,
+                tags=self.parent_context.get("tags", {})
+            )
+            # Set up context manager manually for this span
+            cm = _vaq_span_context(span)
+            span = cm.__enter__()
+            self._spans[run_id] = {"span": span, "cm": cm}
+        else:
+            # Create new context manager if no parent context exists
+            cm = self.sdk._span_context_manager(
+                f"langchain:{span_name}",
+                metadata=self.parent_context
+            )
+            span = cm.__enter__()
+            # Force grouping under the root trace when available
+            if self._root_trace_id:
+                span.trace_id = self._root_trace_id
+                if self._root_span_id:
+                    span.parent_span_id = self._root_span_id
+                    span.inputs = span.inputs or {}
+                    span.inputs.setdefault("parent_span_id", self._root_span_id)
+                    span.metadata.setdefault("parent_span_id", self._root_span_id)
+            self._spans[run_id] = {"span": span, "cm": cm}
 
         # Add metadata
         if metadata:
@@ -130,10 +165,33 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         model_name = serialized.get("kwargs", {}).get("model", "unknown") if isinstance(serialized, dict) else "unknown"
         span_name = f"llm:{model_name}"
 
-        # Keep LLM span open with parent context
-        cm = self.sdk._span_context_manager(span_name, metadata=self.parent_context)
-        span = cm.__enter__()
-        self._spans[run_id] = {"span": span, "cm": cm}
+        # Check if we have a current span context from parent workflow (global context)
+        current_span = _vaq_get_current_span()
+        if current_span:
+            # Inherit trace_id from current span context
+            span = _vaq_create_child_span(
+                agent_name=span_name,
+                function_name=span_name,
+                metadata=self.parent_context,
+                tags=self.parent_context.get("tags", {})
+            )
+            # Set up context manager manually for this span
+            cm = _vaq_span_context(span)
+            span = cm.__enter__()
+            self._spans[run_id] = {"span": span, "cm": cm}
+        else:
+            # Keep LLM span open with parent context
+            cm = self.sdk._span_context_manager(span_name, metadata=self.parent_context)
+            span = cm.__enter__()
+            # Force grouping under the root trace when available
+            if self._root_trace_id:
+                span.trace_id = self._root_trace_id
+                if self._root_span_id:
+                    span.parent_span_id = self._root_span_id
+                    span.inputs = span.inputs or {}
+                    span.inputs.setdefault("parent_span_id", self._root_span_id)
+                    span.metadata.setdefault("parent_span_id", self._root_span_id)
+            self._spans[run_id] = {"span": span, "cm": cm}
 
         # Add metadata
         if metadata:
@@ -203,9 +261,32 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         tool_name = serialized.get("name", "tool") if isinstance(serialized, dict) else "tool"
         span_name = f"tool:{tool_name}"
 
-        cm = self.sdk._span_context_manager(span_name, metadata=self.parent_context)
-        span = cm.__enter__()
-        self._spans[run_id] = {"span": span, "cm": cm}
+        # Check if we have a current span context from parent workflow (global context)
+        current_span = _vaq_get_current_span()
+        if current_span:
+            # Inherit trace_id from current span context
+            span = _vaq_create_child_span(
+                agent_name=span_name,
+                function_name=span_name,
+                metadata=self.parent_context,
+                tags=self.parent_context.get("tags", {})
+            )
+            # Set up context manager manually for this span
+            cm = _vaq_span_context(span)
+            span = cm.__enter__()
+            self._spans[run_id] = {"span": span, "cm": cm}
+        else:
+            cm = self.sdk._span_context_manager(span_name, metadata=self.parent_context)
+            span = cm.__enter__()
+            # Force grouping under the root trace when available
+            if self._root_trace_id:
+                span.trace_id = self._root_trace_id
+                if self._root_span_id:
+                    span.parent_span_id = self._root_span_id
+                    span.inputs = span.inputs or {}
+                    span.inputs.setdefault("parent_span_id", self._root_span_id)
+                    span.metadata.setdefault("parent_span_id", self._root_span_id)
+            self._spans[run_id] = {"span": span, "cm": cm}
 
         # Add metadata
         if metadata:
@@ -257,9 +338,32 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         retriever_name = serialized.get("name", "retriever") if isinstance(serialized, dict) else "retriever"
         span_name = f"retriever:{retriever_name}"
 
-        cm = self.sdk._span_context_manager(span_name, metadata=self.parent_context)
-        span = cm.__enter__()
-        self._spans[run_id] = {"span": span, "cm": cm}
+        # Check if we have a current span context from parent workflow (global context)
+        current_span = _vaq_get_current_span()
+        if current_span:
+            # Inherit trace_id from current span context
+            span = _vaq_create_child_span(
+                agent_name=span_name,
+                function_name=span_name,
+                metadata=self.parent_context,
+                tags=self.parent_context.get("tags", {})
+            )
+            # Set up context manager manually for this span
+            cm = _vaq_span_context(span)
+            span = cm.__enter__()
+            self._spans[run_id] = {"span": span, "cm": cm}
+        else:
+            cm = self.sdk._span_context_manager(span_name, metadata=self.parent_context)
+            span = cm.__enter__()
+            # Force grouping under the root trace when available
+            if self._root_trace_id:
+                span.trace_id = self._root_trace_id
+                if self._root_span_id:
+                    span.parent_span_id = self._root_span_id
+                    span.inputs = span.inputs or {}
+                    span.inputs.setdefault("parent_span_id", self._root_span_id)
+                    span.metadata.setdefault("parent_span_id", self._root_span_id)
+            self._spans[run_id] = {"span": span, "cm": cm}
 
         # Add metadata
         if metadata:

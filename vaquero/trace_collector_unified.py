@@ -62,7 +62,15 @@ class UnifiedTraceCollector:
             # Send to database
             self._send_to_database(hierarchical_trace)
             
-            logger.info(f"Finalized trace {trace_id} with {len(hierarchical_trace.agents)} agents")
+            # Count agents vs components for better logging
+            agent_count = sum(1 for agent in hierarchical_trace.agents if agent.get('level') == 1)
+            component_count = sum(1 for agent in hierarchical_trace.agents if agent.get('level') == 2)
+            total_count = len(hierarchical_trace.agents)
+            
+            if agent_count > 0 and component_count > 0:
+                logger.info(f"Finalized trace {trace_id} with {total_count} entities ({agent_count} agents, {component_count} components)")
+            else:
+                logger.info(f"Finalized trace {trace_id} with {total_count} entities")
             
         except Exception as e:
             logger.error(f"Failed to finalize trace {trace_id}: {e}")
@@ -81,7 +89,15 @@ class UnifiedTraceCollector:
                 # Send to database
                 self._send_to_database(hierarchical_trace)
                 
-                logger.info(f"Finalized trace {trace_id} with {len(hierarchical_trace.agents)} agents")
+                # Count agents vs components for better logging
+                agent_count = sum(1 for agent in hierarchical_trace.agents if agent.get('level') == 1)
+                component_count = sum(1 for agent in hierarchical_trace.agents if agent.get('level') == 2)
+                total_count = len(hierarchical_trace.agents)
+                
+                if agent_count > 0 and component_count > 0:
+                    logger.info(f"Finalized trace {trace_id} with {total_count} entities ({agent_count} agents, {component_count} components)")
+                else:
+                    logger.info(f"Finalized trace {trace_id} with {total_count} entities")
                 
                 # Clean up
                 del self.trace_processors[trace_id]
@@ -121,6 +137,23 @@ class UnifiedTraceCollector:
                 trace_duration_ms = int((trace_end_time - trace_start_time).total_seconds() * 1000)
             
             # Create trace data
+            # Extract session_id from agents if available
+            trace_session_id = None
+            for agent in hierarchical_trace.agents:
+                agent_session_id = None
+
+                # Check agent metadata for session_id
+                if agent.get('metadata') and isinstance(agent.get('metadata'), dict):
+                    agent_session_id = agent['metadata'].get('session_id')
+
+                # Check tags for session_id
+                if not agent_session_id and agent.get('tags') and isinstance(agent.get('tags'), dict):
+                    agent_session_id = agent['tags'].get('session_id')
+
+                if agent_session_id:
+                    trace_session_id = agent_session_id
+                    break
+
             trace_data = {
                 "trace_id": hierarchical_trace.trace_id,
                 "name": hierarchical_trace.name,
@@ -128,7 +161,7 @@ class UnifiedTraceCollector:
                 "start_time": trace_start_time.isoformat() if trace_start_time else None,
                 "end_time": trace_end_time.isoformat() if trace_end_time else None,
                 "duration_ms": trace_duration_ms,
-                "session_id": None,  # Will be extracted from agents if available
+                "session_id": trace_session_id,
                 "tags": {},
                 "metadata": {}
             }
