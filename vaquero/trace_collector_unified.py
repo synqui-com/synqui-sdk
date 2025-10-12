@@ -185,11 +185,11 @@ class UnifiedTraceCollector:
                     "tags": agent.get('tags', {}),
                     "start_time": agent.get('start_time'),
                     "end_time": agent.get('end_time'),
-                    "duration_ms": int(agent.get('duration_ms', 0)),
-                    "input_tokens": agent.get('input_tokens', 0),
-                    "output_tokens": agent.get('output_tokens', 0),
-                    "total_tokens": agent.get('total_tokens', 0),
-                    "cost": agent.get('cost', 0.0),
+                    "duration_ms": int(agent.get('duration_ms') or 0),
+                    "input_tokens": agent.get('input_tokens') or 0,
+                    "output_tokens": agent.get('output_tokens') or 0,
+                    "total_tokens": agent.get('total_tokens') or 0,
+                    "cost": agent.get('cost') or 0.0,
                     "status": agent.get('status', 'completed'),
                     "input_data": agent.get('input_data', {}),
                     "output_data": agent.get('output_data', {}),
@@ -218,6 +218,13 @@ class UnifiedTraceCollector:
             logger.info(f"Sent hierarchical trace to database: {hierarchical_trace.trace_id}")
             logger.info(f"  Logical agents: {len([a for a in hierarchical_trace.agents if a.get('level') == 1])}")
             logger.info(f"  Internal components: {len([a for a in hierarchical_trace.agents if a.get('level') == 2])}")
+            # Log component types
+            component_types = {}
+            for agent in hierarchical_trace.agents:
+                if agent.get('level') == 2:
+                    comp_type = agent.get('component_type', 'unknown')
+                    component_types[comp_type] = component_types.get(comp_type, 0) + 1
+            logger.info(f"  Component breakdown: {component_types}")
             
         except Exception as e:
             logger.error(f"Failed to send hierarchical trace to database: {e}", exc_info=True)

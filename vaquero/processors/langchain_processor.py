@@ -16,12 +16,15 @@ class LangChainProcessor(FrameworkProcessor):
         self.spans = []  # All spans for this trace
         # Map span_id -> logical agent name for quick parent lookup
         self.span_to_logical: Dict[str, str] = {}
+        # Buffer for orphaned internal components (tool spans that arrive before their parent)
+        self.orphaned_components = []  # List of spans waiting for their parent
     
     def add_span(self, span_data: Dict[str, Any]) -> None:
         """Add LangChain span to processor."""
         self.spans.append(span_data)
 
         agent_name = span_data.get('agent_name', '')
+        logger.info(f"📥 Processing span: {agent_name}")
         logical_agent = self._determine_logical_agent(span_data)
 
         # Only create logical agents for actual logical agents, not internal components
@@ -55,8 +58,33 @@ class LangChainProcessor(FrameworkProcessor):
             if parent_logical_agent and parent_logical_agent in self.internal_components:
                 self.internal_components[parent_logical_agent].append(span_data)
                 logger.debug(f"Added internal component {agent_name} to {parent_logical_agent}")
+                
+                # Process any orphaned components that might now have a parent
+                self._process_orphaned_components()
             else:
-                logger.debug(f"Could not determine parent for internal component {agent_name}")
+                # Buffer this component as orphaned - it will be processed later
+                self.orphaned_components.append(span_data)
+                logger.debug(f"Buffered orphaned internal component {agent_name} (no parent yet)")
+    
+    def _process_orphaned_components(self):
+        """Process orphaned components that now have a parent."""
+        if not self.orphaned_components:
+            return
+        
+        # Try to assign orphaned components to their parent
+        remaining_orphans = []
+        for span_data in self.orphaned_components:
+            agent_name = span_data.get('agent_name', '')
+            parent_logical_agent = self._determine_parent_from_context(span_data)
+            
+            if parent_logical_agent and parent_logical_agent in self.internal_components:
+                self.internal_components[parent_logical_agent].append(span_data)
+                logger.debug(f"Assigned orphaned component {agent_name} to {parent_logical_agent}")
+            else:
+                # Still orphaned
+                remaining_orphans.append(span_data)
+        
+        self.orphaned_components = remaining_orphans
     
     def _determine_logical_agent(self, span_data: Dict[str, Any]) -> str:
         """Determine which logical agent this span belongs to."""
@@ -215,6 +243,15 @@ class LangChainProcessor(FrameworkProcessor):
     
     def process_trace(self, trace_id: str) -> HierarchicalTrace:
         """Process all spans into hierarchical format."""
+        # Final attempt to process any remaining orphaned components
+        self._process_orphaned_components()
+        
+        # Log any components that are still orphaned
+        if self.orphaned_components:
+            logger.warning(f"Found {len(self.orphaned_components)} orphaned components after final processing")
+            for orphan in self.orphaned_components:
+                logger.warning(f"  - Orphaned: {orphan.get('agent_name', 'unknown')}")
+        
         agents = []
         dependencies = []
         
@@ -239,10 +276,11 @@ class LangChainProcessor(FrameworkProcessor):
             # Extract model information from all spans
             model_info = self._extract_model_info(all_spans)
             
-            # Extract inputs and outputs from the first and last spans
+            # Extract inputs, outputs, and system prompt from spans
             # First span usually has the inputs, last span usually has the outputs
             first_span_inputs = {}
             last_span_outputs = {}
+            system_prompt = None
             
             if all_spans:
                 # Get inputs from the first span (usually the chain/agent start)
@@ -252,6 +290,12 @@ class LangChainProcessor(FrameworkProcessor):
                 # Get outputs from the last span (usually the chain/agent end)
                 last_span = all_spans[-1]
                 last_span_outputs = last_span.get('outputs', {})
+                
+                # Try to find system prompt from any span (LLM spans usually have it)
+                for span in all_spans:
+                    if span.get('system_prompt'):
+                        system_prompt = span.get('system_prompt')
+                        break
             
             # Create logical agent
             logical_agent = {
@@ -278,13 +322,17 @@ class LangChainProcessor(FrameworkProcessor):
                 # Add model information
                 'llm_model_name': model_info.get('model_name'),
                 'llm_model_provider': model_info.get('model_provider'),
-                'llm_model_parameters': model_info.get('model_parameters')
+                'llm_model_parameters': model_info.get('model_parameters'),
+                # Add system prompt
+                'system_prompt': system_prompt
             }
             agents.append(logical_agent)
 
             # Create internal components for this logical agent
             components = self.internal_components.get(logical_agent_name, [])
+            logger.info(f"Processing {len(components)} internal components for {logical_agent_name}")
             for span in components:
+                logger.debug(f"  - Component: {span.get('agent_name', 'unknown')}")
                 # Preserve session_id in component metadata
                 component_metadata = span.get('metadata', {}).copy()
                 component_tags = span.get('tags', {}).copy()
@@ -312,7 +360,13 @@ class LangChainProcessor(FrameworkProcessor):
                     'input_data': span.get('inputs', {}),
                     'output_data': span.get('outputs', {}),
                     'metadata': component_metadata,
-                    'framework_metadata': span.get('tags', {})
+                    'framework_metadata': span.get('tags', {}),
+                    # Add system prompt for LLM components
+                    'system_prompt': span.get('system_prompt'),
+                    # Add model information for LLM components
+                    'llm_model_name': span.get('model_name'),
+                    'llm_model_provider': span.get('model_provider'),
+                    'llm_model_parameters': span.get('model_parameters')
                 }
                 agents.append(component)
         

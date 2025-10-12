@@ -665,6 +665,7 @@ class VaqueroSDK:
 
         logger.info(f"SDK: === SENDING TRACE TO TRACE COLLECTOR ===")
         logger.info(f"SDK: Agent name: {trace_data.agent_name}")
+        logger.info(f"SDK: Trace ID: {trace_data.trace_id}")
         logger.info(f"SDK: Span ID: {trace_data.span_id}")
         logger.info(f"SDK: Status: {trace_data.status}")
         logger.info(f"SDK: Duration: {trace_data.duration_ms}ms")

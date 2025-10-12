@@ -455,6 +455,7 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         """Called when a tool starts."""
         tool_name = serialized.get("name", "tool") if isinstance(serialized, dict) else "tool"
         span_name = f"tool:{tool_name}"
+        logger.info(f"🔧 TOOL START: {span_name} (run_id: {run_id}, parent: {parent_run_id}, root_trace: {self._root_trace_id})")
 
         # Enhanced metadata for better agent identification
         enhanced_metadata = self.parent_context.copy()
@@ -517,6 +518,7 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         if run_id in self._spans:
             span = self._spans[run_id]["span"]
             cm = self._spans[run_id]["cm"]
+            logger.info(f"✅ TOOL END: run_id={run_id}, span_name={span.agent_name}, trace_id={span.trace_id}")
             # Add output (redacted if configured) and canonical outputs
             if output and not self.redact_outputs:
                 try:
@@ -526,6 +528,13 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
                     span.outputs = {"tool_output": serialized_output}
                 except Exception:
                     span.set_tag("langchain.tool_output", str(output)[:1000])
+            
+            # Mark span as completed and send it to the trace collector
+            span.status = "completed"
+            if hasattr(self.sdk, '_send_trace'):
+                self.sdk._send_trace(span)
+                logger.info(f"📤 Sent tool span to trace collector: {span.agent_name}")
+            
             cm.__exit__(None, None, None)
             del self._spans[run_id]
 
