@@ -239,6 +239,20 @@ class LangChainProcessor(FrameworkProcessor):
             # Extract model information from all spans
             model_info = self._extract_model_info(all_spans)
             
+            # Extract inputs and outputs from the first and last spans
+            # First span usually has the inputs, last span usually has the outputs
+            first_span_inputs = {}
+            last_span_outputs = {}
+            
+            if all_spans:
+                # Get inputs from the first span (usually the chain/agent start)
+                first_span = all_spans[0]
+                first_span_inputs = first_span.get('inputs', {})
+                
+                # Get outputs from the last span (usually the chain/agent end)
+                last_span = all_spans[-1]
+                last_span_outputs = last_span.get('outputs', {})
+            
             # Create logical agent
             logical_agent = {
                 'trace_id': trace_id,
@@ -257,8 +271,8 @@ class LangChainProcessor(FrameworkProcessor):
                 'total_tokens': sum(s.get('total_tokens', 0) for s in all_spans),
                 'cost': model_info.get('cost', 0.0),
                 'tags': {'session_id': agent_session_id} if agent_session_id else {},
-                'input_data': {},
-                'output_data': {},
+                'input_data': first_span_inputs,
+                'output_data': last_span_outputs,
                 'metadata': {'session_id': agent_session_id} if agent_session_id else {},
                 'framework_metadata': {},
                 # Add model information
