@@ -17,6 +17,7 @@ from .serialization import safe_serialize
 from .trace_collector_unified import UnifiedTraceCollector
 from .token_counter import count_function_tokens, extract_tokens_from_llm_response
 from .auto_instrumentation import AutoInstrumentationEngine
+from .analytics import initialize_analytics, get_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,19 @@ class VaqueroSDK:
         self._trace_collector: Optional[UnifiedTraceCollector] = None
         self._enabled = config.enabled
         self._auto_instrumentation: Optional[AutoInstrumentationEngine] = None
+        self._first_trace_tracked = False
 
         # Set up logging
         if config.debug:
             logging.basicConfig(level=logging.DEBUG)
             logger.setLevel(logging.DEBUG)
+
+        # Initialize analytics (framework detection, SDK version reporting)
+        self._analytics = initialize_analytics(
+            api_key=config.api_key,
+            project_id=config.project_id,
+            enabled=config.enabled,
+        )
 
         # Start trace collector if enabled
         if self._enabled:
@@ -669,6 +678,11 @@ class VaqueroSDK:
         logger.info(f"SDK: Span ID: {trace_data.span_id}")
         logger.info(f"SDK: Status: {trace_data.status}")
         logger.info(f"SDK: Duration: {trace_data.duration_ms}ms")
+
+        # Track first trace for analytics
+        if not self._first_trace_tracked and self._analytics:
+            self._analytics.track_first_trace(trace_data.trace_id)
+            self._first_trace_tracked = True
 
         try:
             # Add environment and mode information
