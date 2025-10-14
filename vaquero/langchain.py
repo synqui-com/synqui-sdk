@@ -43,16 +43,12 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
     def __init__(
         self,
         sdk: Optional[VaqueroSDK] = None,
-        redact_prompts: bool = False,
-        redact_outputs: bool = False,
         parent_context: Optional[Dict[str, Any]] = None
     ):
         """Initialize the callback handler.
 
         Args:
             sdk: Vaquero SDK instance to use. If None, uses the global instance.
-            redact_prompts: Whether to redact prompt content in traces (default: False)
-            redact_outputs: Whether to redact output content in traces (default: False)
             parent_context: Parent span context to inherit (session_id, parent_span_id, etc.)
         """
         if not LANGCHAIN_AVAILABLE:
@@ -62,8 +58,6 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
             )
 
         self.sdk = sdk or get_global_instance()
-        self.redact_prompts = redact_prompts
-        self.redact_outputs = redact_outputs
         self.parent_context = parent_context or {}
         # Track active spans and their context managers so we can close on *_end
         # Structure: run_id -> {"span": TraceData, "cm": context_manager}
@@ -77,13 +71,13 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         except Exception:
             self._root_trace_id = None
             self._root_span_id = None
-        
+
         # If no root trace context exists, use self._trace_id as the root trace ID
         # This ensures all spans from this LangChain workflow are grouped together
         if not self._root_trace_id:
             self._root_trace_id = self._trace_id
             logger.debug(f"Using handler trace ID as root trace ID: {self._root_trace_id}")
-        
+
         # Track if trace has been finalized
         self._trace_finalized = False
 
@@ -141,8 +135,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         if tags:
             span.set_tag("langchain.tags", tags)
 
-        # Add inputs (also map to canonical inputs when not redacted)
-        if inputs and not self.redact_prompts:
+        # Add inputs and map to canonical inputs
+        if inputs:
             try:
                 # Serialize LangChain objects for storage
                 serialized_inputs = self._serialize_langchain_data(inputs)
@@ -156,8 +150,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         if run_id in self._spans:
             span = self._spans[run_id]["span"]
             cm = self._spans[run_id]["cm"]
-            # Add outputs (redacted if configured) and canonical outputs
-            if outputs and not self.redact_outputs:
+            # Add outputs and canonical outputs
+            if outputs:
                 try:
                     # Serialize LangChain objects for storage
                     serialized_outputs = self._serialize_langchain_data(outputs)
@@ -294,9 +288,9 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         if tags:
             span.set_tag("langchain.tags", tags)
 
-        # Add prompt info (redacted if configured) and canonical inputs
+        # Add prompt info and canonical inputs
         serialized_prompts = None
-        if prompts and not self.redact_prompts:
+        if prompts:
             try:
                 # Serialize LangChain objects for storage
                 serialized_prompts = self._serialize_langchain_data(prompts)
@@ -424,8 +418,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
             else:
                 logger.debug("No token usage information found in response")
 
-            # Add response info (redacted if configured) and canonical outputs
-            if hasattr(response, 'generations') and not self.redact_outputs:
+            # Add response info and canonical outputs
+            if hasattr(response, 'generations'):
                 generations = response.generations
                 try:
                     # Serialize LangChain objects for storage
@@ -503,8 +497,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         if tags:
             span.set_tag("langchain.tags", tags)
 
-        # Add input (redacted if configured) and canonical inputs
-        if input_str and not self.redact_prompts:
+        # Add input and canonical inputs
+        if input_str:
             try:
                 # Serialize LangChain objects for storage
                 serialized_input = self._serialize_langchain_data(input_str)
@@ -519,8 +513,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
             span = self._spans[run_id]["span"]
             cm = self._spans[run_id]["cm"]
             logger.info(f"✅ TOOL END: run_id={run_id}, span_name={span.agent_name}, trace_id={span.trace_id}")
-            # Add output (redacted if configured) and canonical outputs
-            if output and not self.redact_outputs:
+            # Add output and canonical outputs
+            if output:
                 try:
                     # Serialize LangChain objects for storage
                     serialized_output = self._serialize_langchain_data(output)
@@ -588,8 +582,8 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         if tags:
             span.set_tag("langchain.tags", tags)
 
-        # Add query (redacted if configured) and canonical inputs
-        if query and not self.redact_prompts:
+        # Add query and canonical inputs
+        if query:
             try:
                 # Serialize LangChain objects for storage
                 serialized_query = self._serialize_langchain_data(query)
@@ -708,7 +702,7 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
 
     def finalize_trace(self):
         """Finalize the trace by ending it and sending to the database."""
-        if not self._trace_finalized and self._root_trace_id:
+        if hasattr(self, '_trace_finalized') and not self._trace_finalized and self._root_trace_id:
             logger.debug(f"Finalizing LangChain trace: {self._root_trace_id}")
             try:
                 # Use the SDK instance from the callback handler
@@ -719,7 +713,7 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
                     logger.info(f"LangChain trace finalized: {self._root_trace_id}")
             except Exception as e:
                 logger.error(f"Error finalizing LangChain trace: {e}")
-    
+
     def __del__(self):
         """Destructor to ensure trace is finalized when handler is garbage collected."""
         self.finalize_trace()
@@ -727,8 +721,6 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
 
 def get_vaquero_handler(
     sdk: Optional[VaqueroSDK] = None,
-    redact_prompts: bool = False,
-    redact_outputs: bool = False,
     parent_context: Optional[Dict[str, Any]] = None
 ) -> VaqueroCallbackHandler:
     """Get a configured Vaquero callback handler for LangChain.
@@ -738,8 +730,6 @@ def get_vaquero_handler(
 
     Args:
         sdk: Vaquero SDK instance to use. If None, uses the global instance.
-        redact_prompts: Whether to redact prompt content in traces (default: False)
-        redact_outputs: Whether to redact output content in traces (default: False)
         parent_context: Parent span context to inherit (session_id, parent_span_id, etc.)
 
     Returns:
@@ -751,4 +741,4 @@ def get_vaquero_handler(
         handler = get_vaquero_handler()
         chain.invoke(input, config={"callbacks": [handler]})
     """
-    return VaqueroCallbackHandler(sdk=sdk, redact_prompts=redact_prompts, redact_outputs=redact_outputs, parent_context=parent_context)
+    return VaqueroCallbackHandler(sdk=sdk, parent_context=parent_context)
