@@ -174,12 +174,22 @@ class UnifiedTraceCollector:
             if hierarchical_trace.metadata:
                 trace_environment = hierarchical_trace.metadata.get('environment') or hierarchical_trace.metadata.get('mode')
             
+            # Ensure we have valid datetime values for the API
+            from datetime import datetime
+            current_time = datetime.utcnow()
+            
+            # Format datetimes with explicit UTC timezone indicator
+            def format_datetime(dt):
+                if dt:
+                    return dt.isoformat() + "Z" if not dt.isoformat().endswith('Z') else dt.isoformat()
+                return current_time.isoformat() + "Z"
+            
             trace_data = {
                 "trace_id": hierarchical_trace.trace_id,
                 "name": hierarchical_trace.name,
                 "status": "completed",
-                "start_time": trace_start_time.isoformat() if trace_start_time else None,
-                "end_time": trace_end_time.isoformat() if trace_end_time else None,
+                "start_time": format_datetime(trace_start_time),
+                "end_time": format_datetime(trace_end_time),
                 "duration_ms": trace_duration_ms,
                 "session_id": trace_session_id,
                 "environment": trace_environment,
@@ -196,6 +206,24 @@ class UnifiedTraceCollector:
                 llm_model_parameters = agent.get('llm_model_parameters')
                 system_prompt = agent.get('system_prompt')
 
+                # Format agent start_time and end_time properly
+                agent_start_time = agent.get('start_time')
+                agent_end_time = agent.get('end_time')
+                
+                if agent_start_time and isinstance(agent_start_time, str):
+                    from datetime import datetime
+                    try:
+                        agent_start_time = datetime.fromisoformat(agent_start_time.replace('Z', '+00:00')).isoformat() + "Z"
+                    except (ValueError, AttributeError):
+                        agent_start_time = None
+                
+                if agent_end_time and isinstance(agent_end_time, str):
+                    from datetime import datetime
+                    try:
+                        agent_end_time = datetime.fromisoformat(agent_end_time.replace('Z', '+00:00')).isoformat() + "Z"
+                    except (ValueError, AttributeError):
+                        agent_end_time = None
+                
                 agent_data = {
                     "trace_id": hierarchical_trace.trace_id,
                     "agent_id": agent.get('agent_id', str(uuid.uuid4())),
@@ -203,8 +231,8 @@ class UnifiedTraceCollector:
                     "type": agent.get('component_type', 'agent'),
                     "description": agent.get('description', ''),
                     "tags": agent.get('tags', {}),
-                    "start_time": agent.get('start_time'),
-                    "end_time": agent.get('end_time'),
+                    "start_time": agent_start_time,
+                    "end_time": agent_end_time,
                     "duration_ms": int(agent.get('duration_ms') or 0),
                     "input_tokens": agent.get('input_tokens') or 0,
                     "output_tokens": agent.get('output_tokens') or 0,
