@@ -49,6 +49,12 @@ try:
 except ImportError:
     _LANGCHAIN_AVAILABLE = False
 
+try:
+    from .langgraph import VaqueroLangGraphHandler, get_vaquero_langgraph_handler, create_langgraph_config
+    _LANGGRAPH_AVAILABLE = True
+except ImportError:
+    _LANGGRAPH_AVAILABLE = False
+
 # Default SDK instance
 _default_sdk: Optional[VaqueroSDK] = None
 
@@ -129,6 +135,10 @@ __all__ = [
 # Add LangChain integration if available
 if _LANGCHAIN_AVAILABLE:
     __all__.extend(["VaqueroCallbackHandler", "get_vaquero_handler"])
+
+# Add LangGraph integration if available
+if _LANGGRAPH_AVAILABLE:
+    __all__.extend(["VaqueroLangGraphHandler", "get_vaquero_langgraph_handler", "create_langgraph_config"])
 
 # Register automatic shutdown for the global SDK instance
 import atexit
