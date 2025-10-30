@@ -2265,6 +2265,8 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
             input_tokens = 0
             output_tokens = 0
             total_tokens = 0
+            reasoning_tokens = 0
+            reasoning_text = None
 
             if isinstance(response, LLMResult):
                 logger.info(f"🔧 Processing LLMResult with {len(response.generations) if response.generations else 0} generations")
@@ -2288,6 +2290,7 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
                                 input_tokens += usage.get('input_tokens', 0)
                                 output_tokens += usage.get('output_tokens', 0)
                                 total_tokens += usage.get('total_tokens', 0)
+                                reasoning_tokens += usage.get('reasoning_tokens', 0)
                                 logger.info(f"🔧 Extracted tokens from message usage_metadata: input={input_tokens}, output={output_tokens}, total={total_tokens}")
                             else:
                                 logger.info(f"🔧 No usage_metadata found in message")
@@ -2301,7 +2304,23 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
                                         input_tokens += usage.get('input_tokens', 0)
                                         output_tokens += usage.get('output_tokens', 0)
                                         total_tokens += usage.get('total_tokens', 0)
+                                        reasoning_tokens += usage.get('reasoning_tokens', 0)
                                         logger.info(f"🔧 Extracted tokens from additional_metadata: input={input_tokens}, output={output_tokens}, total={total_tokens}")
+
+                                # Try to extract reasoning text from common locations
+                                try:
+                                    # OpenAI/Anthropic often include provider-specific fields on message
+                                    if hasattr(message, 'additional_kwargs') and isinstance(message.additional_kwargs, dict):
+                                        if 'reasoning' in message.additional_kwargs:
+                                            reasoning_text = message.additional_kwargs.get('reasoning')
+                                        elif 'thinking' in message.additional_kwargs:
+                                            reasoning_text = message.additional_kwargs.get('thinking')
+                                    # LangChain may surface reasoning in response_metadata
+                                    if hasattr(message, 'response_metadata') and isinstance(message.response_metadata, dict):
+                                        if not reasoning_text:
+                                            reasoning_text = message.response_metadata.get('reasoning') or message.response_metadata.get('thinking')
+                                except Exception as rex:
+                                    logger.debug(f"Reasoning extraction from message failed: {rex}")
                         else:
                             logger.info(f"🔧 Generation has no message attribute")
 
@@ -2313,6 +2332,7 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
                         input_tokens = token_usage.get('prompt_tokens', 0)
                         output_tokens = token_usage.get('completion_tokens', 0)
                         total_tokens = token_usage.get('total_tokens', 0)
+                        reasoning_tokens = token_usage.get('reasoning_tokens', reasoning_tokens)
                         logger.info(f"🔧 Found tokens in llm_output token_usage: input={input_tokens}, output={output_tokens}, total={total_tokens}")
 
                 # PRIORITY 3: Try alternative extraction methods
@@ -2324,6 +2344,7 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
                                 input_tokens = usage_data.get('prompt_tokens', usage_data.get('input_tokens', 0))
                                 output_tokens = usage_data.get('completion_tokens', usage_data.get('output_tokens', 0))
                                 total_tokens = usage_data.get('total_tokens', input_tokens + output_tokens)
+                                reasoning_tokens = usage_data.get('reasoning_tokens', reasoning_tokens)
                                 if total_tokens > 0:
                                     logger.info(f"🔧 Found tokens in llm_output.{key}: input={input_tokens}, output={output_tokens}, total={total_tokens}")
                                     break
@@ -2335,6 +2356,10 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
                         input_tokens = metadata.get('prompt_tokens', metadata.get('input_tokens', 0))
                         output_tokens = metadata.get('completion_tokens', metadata.get('output_tokens', 0))
                         total_tokens = metadata.get('total_tokens', input_tokens + output_tokens)
+                        reasoning_tokens = metadata.get('reasoning_tokens', reasoning_tokens)
+                        # Also try to capture reasoning text if present
+                        if not reasoning_text:
+                            reasoning_text = metadata.get('reasoning') or metadata.get('thinking')
                         if total_tokens > 0:
                             logger.info(f"🔧 Found tokens in response_metadata: input={input_tokens}, output={output_tokens}, total={total_tokens}")
 
@@ -2362,6 +2387,8 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
                 'input_tokens': input_tokens,
                 'output_tokens': output_tokens,
                 'total_tokens': total_tokens,
+                'reasoning_tokens': reasoning_tokens,
+                'reasoning': reasoning_text,
                 'cost': cost
             })
             

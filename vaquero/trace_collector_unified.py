@@ -171,6 +171,8 @@ class UnifiedTraceCollector:
         """Send hierarchical trace to database."""
         try:
             trace_id = hierarchical_trace.trace_id
+            logger.info(f"🔍 DB SEND: Starting database insertion for trace {trace_id}")
+            logger.info(f"🔍 DB SEND: Hierarchical trace has {len(hierarchical_trace.agents)} top-level agents")
             # Calculate trace timing from agents
             start_times = []
             end_times = []
@@ -268,10 +270,31 @@ class UnifiedTraceCollector:
                 "metadata": hierarchical_trace.metadata or {}
             }
             
-            # Create agents data
+            # Create agents data - recursively collect all agents from hierarchical structure
             agents_data = []
+            logger.info(f"🔍 DB SEND: Starting recursive agent collection from {len(hierarchical_trace.agents)} top-level agents")
+
+            def collect_agents_recursively(agent_hierarchy):
+                """Recursively collect all agents from hierarchical structure."""
+                # Add current agent
+                agents_data.append(agent_hierarchy)
+                # Recursively collect child agents
+                for child in agent_hierarchy.get('agents', []):
+                    collect_agents_recursively(child)
+
+            # Collect all agents from the hierarchical structure
             for agent in hierarchical_trace.agents:
-                # Use model information that was already extracted by the processor
+                collect_agents_recursively(agent)
+
+            logger.info(f"🔍 DB SEND: Recursive collection complete - collected {len(agents_data)} total agents for database insertion")
+            # Log agent details
+            for i, agent in enumerate(agents_data):
+                logger.info(f"🔍 DB SEND: Agent {i}: {agent.get('name', 'unnamed')} (level {agent.get('level', '?')}, type {agent.get('component_type', 'unknown')}, framework {agent.get('framework', 'unknown')})")
+
+            # Now process all collected agents
+            processed_agents_data = []
+            logger.info(f"🔍 DB SEND: Processing {len(agents_data)} agents for database format conversion")
+            for agent in agents_data:
                 llm_model_name = agent.get('llm_model_name')
                 llm_model_provider = agent.get('llm_model_provider')
                 llm_model_parameters = agent.get('llm_model_parameters')
@@ -363,16 +386,25 @@ class UnifiedTraceCollector:
                     "agent_orchestration_id": agent_orchestration_id,
                     "chat_session_id": agent_session_id
                 }
-                agents_data.append(agent_data)
-            
+                processed_agents_data.append(agent_data)
+
+            logger.info(f"🔍 DB SEND: Agent processing complete - created {len(processed_agents_data)} processed agent records")
+            # Log processed agent details
+            for i, agent_data in enumerate(processed_agents_data):
+                logger.info(f"🔍 DB SEND: Processed Agent {i}: {agent_data.get('name', 'unnamed')} (level {agent_data.get('level', '?')}, type {agent_data.get('type', 'unknown')})")
+
             # Send as batch to API
             batch_data = {
                 "traces": [trace_data],
-                "agents": agents_data
+                "agents": processed_agents_data
             }
+
+            logger.info(f"🔍 DB SEND: Prepared batch data with 1 trace and {len(processed_agents_data)} agents")
+            logger.info(f"🔍 DB SEND: Batch trace: {trace_data.get('name', 'unnamed')} (ID: {trace_data.get('trace_id', 'unknown')})")
             
             self._send_batch_to_api(batch_data)
-            
+
+            logger.info(f"🔍 DB SEND: Successfully completed database insertion for trace {hierarchical_trace.trace_id}")
             logger.info(f"Sent hierarchical trace to database: {hierarchical_trace.trace_id}")
             # Count logical agents based on framework - LangGraph has logical agents nested in level 2 orchestrations, LangChain at level 1
             logical_agents_count = 0
@@ -407,7 +439,13 @@ class UnifiedTraceCollector:
             logger.info(f"  Component breakdown: {component_types}")
             
         except Exception as e:
-            logger.error(f"Failed to send hierarchical trace to database: {e}", exc_info=True)
+            logger.error(f"🔍 DB SEND: Failed to send hierarchical trace to database: {e}", exc_info=True)
+            logger.error(f"🔍 DB SEND: Trace ID that failed: {hierarchical_trace.trace_id}")
+            logger.error(f"🔍 DB SEND: Number of agents that were prepared: {len(agents_data) if 'agents_data' in locals() else 'unknown'}")
+            if 'processed_agents_data' in locals():
+                logger.error(f"🔍 DB SEND: Number of agents processed: {len(processed_agents_data)}")
+            if 'batch_data' in locals():
+                logger.error(f"🔍 DB SEND: Batch data was prepared with {len(batch_data.get('agents', []))} agents")
     
     def _send_agent_to_api(self, agent_data: dict) -> None:
         """Send individual agent to API."""
@@ -469,13 +507,28 @@ class UnifiedTraceCollector:
                 logger.warning(f"🔍 SDK: No project_id available - traces may be sent to wrong project!")
             
             logger.info(f"🔍 SDK: Sending request to {url} with headers: {list(headers.keys())}")
-            
-            response = requests.post(url, json=serializable_data, headers=headers, timeout=30)
-            
-            if response.status_code not in [200, 201, 202]:
-                logger.warning(f"Failed to send batch to API: {response.status_code} - {response.text}")
-            else:
-                logger.info(f"🔍 SDK: Successfully sent batch to API (status: {response.status_code})")
+            logger.info(f"🔍 SDK: Request payload size: {len(str(serializable_data))} characters")
+            logger.info(f"🔍 SDK: Request contains {len(serializable_data.get('agents', []))} agents")
+
+            # Log agent details being sent to API
+            for i, agent in enumerate(serializable_data.get('agents', [])):
+                logger.info(f"🔍 SDK: API Agent {i}: {agent.get('name', 'unnamed')} (level {agent.get('level', '?')}, type {agent.get('type', 'unknown')})")
+
+            try:
+                response = requests.post(url, json=serializable_data, headers=headers, timeout=30)
+                logger.info(f"🔍 SDK: API response received - status: {response.status_code}")
+
+                if response.status_code not in [200, 201, 202]:
+                    logger.warning(f"Failed to send batch to API: {response.status_code} - {response.text}")
+                    logger.warning(f"🔍 SDK: Full response body: {response.text}")
+                else:
+                    logger.info(f"🔍 SDK: Successfully sent batch to API (status: {response.status_code})")
+                    if response.text:
+                        logger.info(f"🔍 SDK: Response body: {response.text}")
+
+            except Exception as api_error:
+                logger.error(f"🔍 SDK: Exception during API call: {api_error}", exc_info=True)
+                raise
                 
         except Exception as e:
             logger.error(f"Failed to send batch to API: {e}")

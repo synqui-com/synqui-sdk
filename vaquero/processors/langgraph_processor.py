@@ -13,6 +13,8 @@ class LangGraphProcessor(FrameworkProcessor):
     def __init__(self):
         self.agents = {}  # agent_name -> agent_data
         self.spans = []  # All spans for this trace
+        # Ensure orchestration container is present for grouping
+        self.agent_orchestrations = getattr(self, 'agent_orchestrations', {})
         self.agent_orchestrations = {}  # orchestration_id -> orchestration_data
     
     def add_span(self, span_data: Dict[str, Any]) -> None:
@@ -48,6 +50,7 @@ class LangGraphProcessor(FrameworkProcessor):
                 'session_id': session_id,
                 'chat_session_id': chat_session_id,
                 'agents': [],
+                'components': [],
                 'start_time': span_data.get('start_time'),
                 'end_time': span_data.get('end_time'),
                 'status': span_data.get('status', 'completed')
@@ -61,24 +64,40 @@ class LangGraphProcessor(FrameworkProcessor):
         else:
             level = 2  # Default to level 2
         
-        # Add agent to orchestration
+        # Add span to orchestration bucket (agents vs components)
         if agent_orchestration_id:
-            agent_data = {
-                'name': agent_name,
-                'level': level,
-                'framework': 'langgraph',
-                'component_type': component_type,
-                'parent_agent_id': None,
-                'spans': [span_data],
-                'session_id': session_id,
-                'chat_session_id': chat_session_id,
-                'agent_orchestration_id': agent_orchestration_id,
-                'message_type': span_data.get('message_type', 'agent_response'),
-                'message_sequence': span_data.get('message_sequence', 0)
-            }
-            
-            self.agent_orchestrations[agent_orchestration_id]['agents'].append(agent_data)
-            logger.debug(f"Added LangGraph {component_type} {agent_name} to orchestration {agent_orchestration_id}")
+            # For internal components (llm/tool/chain/prompt), attach to components list
+            if component_type in ['llm', 'tool', 'chain', 'prompt']:
+                parent_agent_id = span_data.get('parent_agent_name') or self._find_parent_agent_for_span(span_data)
+                component_record = {
+                    'name': agent_name,
+                    'level': 4,  # Components are level 4
+                    'framework': 'langgraph',
+                    'component_type': component_type,
+                    'parent_agent_id': parent_agent_id,
+                    'spans': [span_data],
+                    'session_id': session_id,
+                    'chat_session_id': chat_session_id,
+                    'agent_orchestration_id': agent_orchestration_id,
+                }
+                self.agent_orchestrations[agent_orchestration_id]['components'].append(component_record)
+                logger.debug(f"Added LangGraph component {component_type} {agent_name} under parent {parent_agent_id} to orchestration {agent_orchestration_id}")
+            else:
+                agent_data = {
+                    'name': agent_name,
+                    'level': level,
+                    'framework': 'langgraph',
+                    'component_type': component_type,
+                    'parent_agent_id': None,
+                    'spans': [span_data],
+                    'session_id': session_id,
+                    'chat_session_id': chat_session_id,
+                    'agent_orchestration_id': agent_orchestration_id,
+                    'message_type': span_data.get('message_type', 'agent_response'),
+                    'message_sequence': span_data.get('message_sequence', 0)
+                }
+                self.agent_orchestrations[agent_orchestration_id]['agents'].append(agent_data)
+                logger.debug(f"Added LangGraph agent {agent_name} to orchestration {agent_orchestration_id}")
         else:
             # Standalone agent/component
             if agent_name not in self.agents:
