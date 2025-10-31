@@ -295,10 +295,23 @@ class UnifiedTraceCollector:
             processed_agents_data = []
             logger.info(f"🔍 DB SEND: Processing {len(agents_data)} agents for database format conversion")
             for agent in agents_data:
-                llm_model_name = agent.get('llm_model_name')
-                llm_model_provider = agent.get('llm_model_provider')
-                llm_model_parameters = agent.get('llm_model_parameters')
+                # Map model fields from either flat fields or nested model_info (from LangGraph processor)
+                model_info = agent.get('model_info', {}) or {}
+                llm_model_name = agent.get('llm_model_name') or model_info.get('model_name')
+                llm_model_provider = agent.get('llm_model_provider') or model_info.get('model_provider')
+                llm_model_parameters = agent.get('llm_model_parameters') or model_info.get('model_parameters')
                 system_prompt = agent.get('system_prompt')
+
+                # Normalize token/cost fields. LangGraph processor aggregates as total_tokens/total_cost.
+                input_tokens = agent.get('input_tokens') or 0
+                output_tokens = agent.get('output_tokens') or 0
+                total_tokens = agent.get('total_tokens') or (input_tokens + output_tokens) or agent.get('total_tokens') or agent.get('total_token_count') or 0
+                if not total_tokens and isinstance(model_info, dict):
+                    # Some spans only report total tokens at the model_info level (rare)
+                    total_tokens = model_info.get('total_tokens', 0)
+                cost_val = agent.get('cost')
+                if cost_val is None:
+                    cost_val = agent.get('total_cost') or 0.0
 
                 # Format agent start_time and end_time properly
                 agent_start_time = agent.get('start_time')
@@ -350,6 +363,11 @@ class UnifiedTraceCollector:
                 if not agent_orchestration_id:
                     agent_orchestration_id = agent.get('agent_orchestration_id')
 
+                # Extra debug logging to show what will be sent per-agent
+                logger.info(
+                    f"🔍 DB SEND: Preparing agent '{agent.get('name', '')}' tokens/cost -> input: {input_tokens}, output: {output_tokens}, total: {total_tokens}, cost: {cost_val}"
+                )
+
                 agent_data = {
                     "trace_id": hierarchical_trace.trace_id,
                     "agent_id": agent.get('agent_id', str(uuid.uuid4())),
@@ -360,10 +378,10 @@ class UnifiedTraceCollector:
                     "start_time": agent_start_time,
                     "end_time": agent_end_time,
                     "duration_ms": int(agent.get('duration_ms') or 0),
-                    "input_tokens": agent.get('input_tokens') or 0,
-                    "output_tokens": agent.get('output_tokens') or 0,
-                    "total_tokens": agent.get('total_tokens') or 0,
-                    "cost": agent.get('cost') or 0.0,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens,
+                    "cost": cost_val,
                     "status": agent.get('status', 'completed'),
                     "input_data": agent.get('input_data', {}),
                     "output_data": agent.get('output_data', {}),
