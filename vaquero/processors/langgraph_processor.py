@@ -1,6 +1,7 @@
 """LangGraph-specific processor for hierarchical trace collection."""
 
 import logging
+import uuid
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from .base_processor import FrameworkProcessor, HierarchicalTrace
@@ -22,12 +23,22 @@ class LangGraphProcessor(FrameworkProcessor):
         """Process normalized spans into hierarchical format matching CHAT_SESSION_TRACE_HIERARCHY."""
         logger.info(f"Processing LangGraph trace {trace_id} with {len(self.spans)} spans")
 
+        # Log all spans received
+        logger.info(f"📊 PROCESSOR: All spans received:")
+        for i, span in enumerate(self.spans):
+            logger.info(f"📊 PROCESSOR: Span {i}: component_type={span.get('component_type')}, "
+                       f"name={span.get('name')}, span_id={span.get('span_id')}, "
+                       f"message_sequence={span.get('message_sequence')}")
+
         # Group spans by type
         graph_spans = [s for s in self.spans if s.get('component_type') == 'graph']
         node_spans = [s for s in self.spans if s.get('component_type') == 'node']
         llm_spans = [s for s in self.spans if s.get('component_type') == 'llm']
         tool_spans = [s for s in self.spans if s.get('component_type') == 'tool']
         chain_spans = [s for s in self.spans if s.get('component_type') == 'chain']
+        
+        logger.info(f"📊 PROCESSOR: Grouped spans - graph={len(graph_spans)}, node={len(node_spans)}, "
+                   f"llm={len(llm_spans)}, tool={len(tool_spans)}, chain={len(chain_spans)}")
 
         # Extract session info
         chat_session_id = None
@@ -93,16 +104,23 @@ class LangGraphProcessor(FrameworkProcessor):
             }
             
         # Group nodes by message sequence for orchestrations (Level 2)
+        logger.info(f"📊 PROCESSOR: Grouping {len(node_spans)} node spans by message_sequence")
         nodes_by_sequence = {}
         for span in node_spans:
             seq = span.get('message_sequence', 0)
+            logger.info(f"📊 PROCESSOR: Node span - name={span.get('name')}, message_sequence={seq}")
             if seq not in nodes_by_sequence:
                 nodes_by_sequence[seq] = []
             nodes_by_sequence[seq].append(span)
 
+        logger.info(f"📊 PROCESSOR: Created {len(nodes_by_sequence)} message sequence groups: {list(nodes_by_sequence.keys())}")
+
         # Create orchestration agents (Level 2)
         for seq, node_list in nodes_by_sequence.items():
+            logger.info(f"📊 PROCESSOR: Creating orchestration for sequence {seq} with {len(node_list)} nodes")
             orchestration_agent = self._build_orchestration_agent(seq, node_list, llm_spans, tool_spans, chain_spans)
+            # Ensure proper parent linkage in flattened output
+            orchestration_agent['parent_agent_id'] = session_agent['name']
             session_agent['agents'].append(orchestration_agent)
 
         return session_agent
@@ -130,9 +148,37 @@ class LangGraphProcessor(FrameworkProcessor):
         # Add node agents (Level 3)
         for node_span in node_spans:
             node_agent = self._build_node_agent(node_span, llm_spans, tool_spans, chain_spans)
+            # Ensure node shows as child of this orchestration in flattened DB rows
+            node_agent['parent_agent_id'] = orchestration_agent['name']
             orchestration_agent['agents'].append(node_agent)
 
         return orchestration_agent
+
+    def _find_components_for_node(self, node_span_id: str, all_spans: List[Dict]) -> List[Dict]:
+        """Find all component spans that belong to a node by traversing parent chains."""
+        components = []
+
+        for span in all_spans:
+            current_span = span
+            visited = set()  # Prevent cycles
+
+            # Walk up the parent chain to see if we reach the target node
+            while current_span:
+                current_parent_id = current_span.get('parent_span_id')
+                if not current_parent_id or current_parent_id in visited:
+                    break
+
+                visited.add(current_parent_id)
+
+                # Check if this parent is our target node
+                if current_parent_id == node_span_id:
+                    components.append(span)
+                    break
+
+                # Find the parent span and continue walking
+                current_span = next((s for s in all_spans if s.get('span_id') == current_parent_id), None)
+
+        return components
 
     def _build_node_agent(self, node_span: Dict[str, Any], llm_spans: List[Dict],
                          tool_spans: List[Dict], chain_spans: List[Dict]) -> Dict[str, Any]:
@@ -140,24 +186,15 @@ class LangGraphProcessor(FrameworkProcessor):
 
         node_name = node_span.get('name', 'unknown_node')
 
-        # Find components that belong to this node (by parent_span_id)
+        # Find components that belong to this node using parent chain traversal
         node_span_id = node_span.get('span_id')
-        node_components = []
+        all_component_spans = llm_spans + tool_spans + chain_spans
+        component_spans = self._find_components_for_node(node_span_id, all_component_spans)
+        node_components = [self._span_to_agent(span) for span in component_spans]
 
-        # Add LLM components
-        for llm_span in llm_spans:
-            if llm_span.get('parent_span_id') == node_span_id:
-                node_components.append(self._span_to_agent(llm_span))
-
-        # Add tool components
-        for tool_span in tool_spans:
-            if tool_span.get('parent_span_id') == node_span_id:
-                node_components.append(self._span_to_agent(tool_span))
-
-        # Add chain components
-        for chain_span in chain_spans:
-            if chain_span.get('parent_span_id') == node_span_id:
-                node_components.append(self._span_to_agent(chain_span))
+        # Propagate parent linkage so DB rows reflect association
+        for component in node_components:
+            component['parent_agent_id'] = node_name
 
         # Aggregate metrics from components
         total_tokens = sum(c.get('total_tokens', 0) for c in node_components)
@@ -187,6 +224,7 @@ class LangGraphProcessor(FrameworkProcessor):
     def _span_to_agent(self, span: Dict[str, Any]) -> Dict[str, Any]:
         """Convert a normalized span to agent format."""
         agent = {
+            'agent_id': str(uuid.uuid4()),  # Generate UUID for consistency
             'name': span.get('name', 'unknown'),
             'level': self._component_type_to_level(span.get('component_type', 'unknown')),
                 'framework': 'langgraph',

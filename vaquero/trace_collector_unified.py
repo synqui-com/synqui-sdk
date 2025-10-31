@@ -287,9 +287,23 @@ class UnifiedTraceCollector:
                 collect_agents_recursively(agent)
 
             logger.info(f"🔍 DB SEND: Recursive collection complete - collected {len(agents_data)} total agents for database insertion")
-            # Log agent details
+
+            # Phase 1: Generate all agent_ids and build name->id mapping
+            name_to_id = {}
+            for agent in agents_data:
+                agent_id = agent.get('agent_id') or str(uuid.uuid4())
+                agent['agent_id'] = agent_id
+                name_to_id[agent['name']] = agent_id
+
+            # Phase 2: Resolve all parent_agent_id references from names to IDs
+            for agent in agents_data:
+                parent_name = agent.get('parent_agent_id')
+                if parent_name and parent_name in name_to_id:
+                    agent['parent_agent_id'] = name_to_id[parent_name]  # Convert name → UUID
+
+            # Log agent details with parent_agent_id
             for i, agent in enumerate(agents_data):
-                logger.info(f"🔍 DB SEND: Agent {i}: {agent.get('name', 'unnamed')} (level {agent.get('level', '?')}, type {agent.get('component_type', 'unknown')}, framework {agent.get('framework', 'unknown')})")
+                logger.info(f"🔍 DB SEND: Agent {i}: {agent.get('name', 'unnamed')} (level {agent.get('level', '?')}, type {agent.get('component_type', 'unknown')}, framework {agent.get('framework', 'unknown')}, parent={agent.get('parent_agent_id', 'None')})")
 
             # Now process all collected agents
             processed_agents_data = []
