@@ -61,21 +61,35 @@ class LangGraphProcessor(FrameworkProcessor):
                     agent = self._span_to_agent(span)
                     agents.append(agent)
 
+        # Extract graph architecture from graph span metadata if available
+        graph_architecture = None
+        for span in graph_spans:
+            if span.get('metadata', {}).get('graph_architecture'):
+                graph_architecture = span['metadata']['graph_architecture']
+                logger.info(f"📊 PROCESSOR: Found graph architecture in graph span: {len(graph_architecture.get('nodes', []))} nodes")
+                break
+        
+        metadata = {
+            'framework': 'langgraph',
+            'chat_session_id': chat_session_id,
+            'total_spans': len(self.spans),
+            'graph_spans': len(graph_spans),
+            'node_spans': len(node_spans),
+            'llm_spans': len(llm_spans),
+            'tool_spans': len(tool_spans),
+            'chain_spans': len(chain_spans)
+        }
+        
+        # Add graph architecture to metadata if found
+        if graph_architecture:
+            metadata['graph_architecture'] = graph_architecture
+        
         hierarchical_trace = HierarchicalTrace(
             trace_id=trace_id,
             name=f"LangGraph Workflow" if not chat_session_id else f"Chat Session {chat_session_id[:8]}",
             agents=agents,
             dependencies=dependencies,
-            metadata={
-                'framework': 'langgraph',
-                'chat_session_id': chat_session_id,
-                'total_spans': len(self.spans),
-                'graph_spans': len(graph_spans),
-                'node_spans': len(node_spans),
-                'llm_spans': len(llm_spans),
-                'tool_spans': len(tool_spans),
-                'chain_spans': len(chain_spans)
-            }
+            metadata=metadata
         )
 
         logger.info(f"Built hierarchical trace with {len(agents)} top-level agents")
@@ -260,8 +274,8 @@ class LangGraphProcessor(FrameworkProcessor):
         node_agent = {
             'name': node_name,
             'level': 3,
-            'framework': 'langgraph',
-            'component_type': 'agent',
+                    'framework': 'langgraph',
+                    'component_type': 'agent',
             'parent_agent_id': None,  # Will be set when added to orchestration
             'start_time': node_start,
             'end_time': node_end,
@@ -269,7 +283,7 @@ class LangGraphProcessor(FrameworkProcessor):
             'status': node_span.get('status', 'completed'),
             'input_tokens': input_tokens,
             'output_tokens': output_tokens,
-            'total_tokens': total_tokens,
+                    'total_tokens': total_tokens,
             'cost': total_cost,
             'agents': node_components,  # Components become sub-agents
             'input_data': aggregated_input_data if aggregated_input_data else None,

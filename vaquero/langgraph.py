@@ -67,6 +67,9 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
 
         # Stable trace identifier: use session id when available, else per-handler UUID
         self._trace_id = session.session_id if session else str(uuid.uuid4())
+        
+        # Graph architecture cache - can be set via set_graph_architecture() or extracted from config
+        self._graph_architecture: Optional[Dict[str, Any]] = None
 
     def _extract_component_name(self, serialized: Optional[Dict], metadata: Optional[Dict], tags: Optional[List[str]]) -> str:
         """Extract component name from metadata/tags for LangGraph spans."""
@@ -221,6 +224,48 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
         logger.info(f"🔍 NODE DETECTION: Detected as NODE execution: {langgraph_node}")
         return (True, langgraph_node)
     
+    def set_graph_architecture(self, graph: Any, graph_name: Optional[str] = None) -> None:
+        """Set the complete graph architecture for this handler.
+        
+        This allows capturing the full graph structure (all nodes and edges) 
+        even if they weren't executed during this trace.
+        
+        Args:
+            graph: LangGraph graph object (from app.get_graph() or workflow.compile())
+            graph_name: Optional graph name/identifier
+        """
+        try:
+            # Extract nodes from graph
+            graph_nodes = list(graph.nodes.keys()) if hasattr(graph, 'nodes') else []
+            
+            # Extract edges from graph
+            graph_edges = []
+            if hasattr(graph, 'edges'):
+                for edge in graph.edges:
+                    graph_edges.append({
+                        'source': edge.source if hasattr(edge, 'source') else str(edge).split('->')[0].strip(),
+                        'target': edge.target if hasattr(edge, 'target') else str(edge).split('->')[1].strip(),
+                        'conditional': getattr(edge, 'conditional', False)
+                    })
+            
+            # Find entry point (target of __start__ edge)
+            entry_point = None
+            for edge_dict in graph_edges:
+                if edge_dict.get('source') == '__start__':
+                    entry_point = edge_dict.get('target')
+                    break
+            
+            self._graph_architecture = {
+                'nodes': graph_nodes,
+                'edges': graph_edges,
+                'entry_point': entry_point,
+                'graph_name': graph_name or 'langgraph_workflow'
+            }
+            logger.debug(f"Graph architecture set: {len(graph_nodes)} nodes, {len(graph_edges)} edges, entry={entry_point}")
+        except Exception as e:
+            logger.warning(f"Failed to extract graph architecture: {e}")
+            self._graph_architecture = None
+    
     def _emit_span(self, span_data: Dict[str, Any]) -> None:
         """Emit a normalized span to the trace collector."""
         # Always add session context if available
@@ -253,11 +298,30 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
         """Handle graph start for LangGraph applications."""
         logger.debug(f"LangGraph graph start: {run_id}")
 
+        # Try to extract graph architecture from config if available
+        # LangGraph may pass config through kwargs in some cases, or we can check configurable
+        graph_architecture = self._graph_architecture
+        
+        # Check if graph architecture was passed via configurable (if handler was in config)
+        if not graph_architecture and 'config' in kwargs:
+            config = kwargs.get('config', {})
+            configurable = config.get('configurable', {})
+            if 'graph_architecture' in configurable:
+                graph_architecture = configurable['graph_architecture']
+                logger.debug("Extracted graph architecture from config.configurable")
+        
         # Increment message sequence per graph invocation (user turn)
         self._session_context['message_sequence'] = (self._session_context.get('message_sequence') or 0) + 1
 
         # Track the graph run - store data for end callback
         span_id = str(uuid.uuid4())
+        graph_metadata = metadata or {}
+        
+        # Add graph architecture to metadata if we have it
+        if graph_architecture:
+            graph_metadata['graph_architecture'] = graph_architecture
+            logger.debug(f"Added graph architecture to graph span metadata: {len(graph_architecture.get('nodes', []))} nodes")
+        
         self._runs[run_id] = {
             'span_id': span_id,
             'parent_span_id': None,  # Graph is root
@@ -265,7 +329,7 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
             'name': serialized.get('name', 'langgraph_workflow') if serialized else 'langgraph_workflow',
             'component_type': 'graph',
             'inputs': inputs,
-            'metadata': metadata or {}
+            'metadata': graph_metadata
         }
 
     def on_graph_end(
