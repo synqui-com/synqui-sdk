@@ -261,7 +261,7 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
                 'entry_point': entry_point,
                 'graph_name': graph_name or 'langgraph_workflow'
             }
-            logger.debug(f"Graph architecture set: {len(graph_nodes)} nodes, {len(graph_edges)} edges, entry={entry_point}")
+            logger.info(f"📊 GRAPH ARCH: Graph architecture set: {len(graph_nodes)} nodes, {len(graph_edges)} edges, entry={entry_point}")
         except Exception as e:
             logger.warning(f"Failed to extract graph architecture: {e}")
             self._graph_architecture = None
@@ -272,6 +272,16 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
         if self._session_context.get('chat_session_id'):
             span_data['chat_session_id'] = self._session_context['chat_session_id']
         span_data['message_sequence'] = self._session_context.get('message_sequence', 0)
+
+        # Ensure metadata exists
+        if 'metadata' not in span_data:
+            span_data['metadata'] = {}
+        
+        # Add graph architecture to metadata if available (for cases where on_graph_start isn't called)
+        # This ensures the processor can extract it even if there are no graph spans
+        if self._graph_architecture and 'graph_architecture' not in span_data.get('metadata', {}):
+            span_data['metadata']['graph_architecture'] = self._graph_architecture
+            logger.info(f"📊 GRAPH ARCH: Added graph architecture to span metadata (fallback): {len(self._graph_architecture.get('nodes', []))} nodes")
 
         logger.info(f"📤 EMIT SPAN: component_type={span_data.get('component_type')}, name={span_data.get('name')}, "
                    f"span_id={span_data.get('span_id')}, message_sequence={span_data.get('message_sequence')}")
@@ -320,7 +330,7 @@ class VaqueroLangGraphHandler(BaseCallbackHandler):
         # Add graph architecture to metadata if we have it
         if graph_architecture:
             graph_metadata['graph_architecture'] = graph_architecture
-            logger.debug(f"Added graph architecture to graph span metadata: {len(graph_architecture.get('nodes', []))} nodes")
+            logger.info(f"📊 GRAPH ARCH: Added graph architecture to graph span metadata: {len(graph_architecture.get('nodes', []))} nodes, {len(graph_architecture.get('edges', []))} edges")
         
         self._runs[run_id] = {
             'span_id': span_id,

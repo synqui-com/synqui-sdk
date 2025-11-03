@@ -61,13 +61,22 @@ class LangGraphProcessor(FrameworkProcessor):
                     agent = self._span_to_agent(span)
                     agents.append(agent)
 
-        # Extract graph architecture from graph span metadata if available
+        # Extract graph architecture from any span metadata if available
+        # (It may be in graph spans, or in any span as a fallback if on_graph_start wasn't called)
         graph_architecture = None
+        # First check graph spans
         for span in graph_spans:
             if span.get('metadata', {}).get('graph_architecture'):
                 graph_architecture = span['metadata']['graph_architecture']
                 logger.info(f"📊 PROCESSOR: Found graph architecture in graph span: {len(graph_architecture.get('nodes', []))} nodes")
                 break
+        # Fallback: check any span if no graph spans exist
+        if not graph_architecture:
+            for span in self.spans:
+                if span.get('metadata', {}).get('graph_architecture'):
+                    graph_architecture = span['metadata']['graph_architecture']
+                    logger.info(f"📊 PROCESSOR: Found graph architecture in span metadata (fallback): {len(graph_architecture.get('nodes', []))} nodes")
+                    break
         
         metadata = {
             'framework': 'langgraph',

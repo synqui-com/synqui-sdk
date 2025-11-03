@@ -259,6 +259,18 @@ class UnifiedTraceCollector:
             # Extract chat_session_id from metadata
             chat_session_id = hierarchical_trace.metadata.get('chat_session_id') if hierarchical_trace.metadata else None
             
+            # Prepare raw_data with metadata for storage in database
+            # The backend expects raw_data to contain metadata (as per get_trace_metadata function)
+            trace_metadata = hierarchical_trace.metadata or {}
+            raw_data = {
+                "metadata": trace_metadata
+            } if trace_metadata else None
+            
+            # Log graph architecture if present
+            if trace_metadata.get('graph_architecture'):
+                arch = trace_metadata['graph_architecture']
+                logger.info(f"🔍 DB SEND: Trace includes graph architecture: {len(arch.get('nodes', []))} nodes, {len(arch.get('edges', []))} edges, entry={arch.get('entry_point')}")
+            
             trace_data = {
                 "trace_id": hierarchical_trace.trace_id,
                 "name": hierarchical_trace.name,
@@ -275,7 +287,7 @@ class UnifiedTraceCollector:
                 "chat_session_id": chat_session_id,
                 "environment": trace_environment,
                 "tags": {},
-                "metadata": hierarchical_trace.metadata or {}
+                "raw_data": raw_data
             }
             
             # Create agents data - recursively collect all agents from hierarchical structure
