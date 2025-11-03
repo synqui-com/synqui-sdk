@@ -16,6 +16,9 @@ import logging
 from typing import Optional, Dict, Any
 from datetime import datetime
 import json
+import hashlib
+import uuid
+from importlib.metadata import version as pkg_version, PackageNotFoundError
 
 try:
     import requests
@@ -106,9 +109,8 @@ class SDKAnalytics:
     def _get_sdk_version(self) -> str:
         """Get the SDK version."""
         try:
-            from vaquero import __version__
-            return __version__
-        except:
+            return pkg_version('vaquero')
+        except PackageNotFoundError:
             return 'unknown'
     
     def _get_python_version(self) -> str:
@@ -169,11 +171,9 @@ class SDKAnalytics:
         """
         if self.api_key:
             # Use hash of API key for consistent user identification
-            import hashlib
             return hashlib.sha256(self.api_key.encode()).hexdigest()[:16]
         else:
             # Generate anonymous ID
-            import uuid
             return f"anon_{str(uuid.uuid4())[:8]}"
     
     def _track_sdk_initialized(self):

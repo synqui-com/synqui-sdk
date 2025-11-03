@@ -7,6 +7,12 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 from .processors import LangChainProcessor
 from .processors.langgraph_processor import LangGraphProcessor
+from .serialization import safe_serialize
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
 
 if TYPE_CHECKING:
     from .sdk import VaqueroSDK
@@ -26,7 +32,6 @@ def json_serializable(obj):
     elif hasattr(obj, '__dict__'):
         # Handle objects like ChatGeneration, AIMessage, etc.
         try:
-            from .serialization import safe_serialize
             return safe_serialize(obj)
         except Exception:
             # Fallback to string representation
@@ -189,14 +194,12 @@ class UnifiedTraceCollector:
                     # Convert string to datetime if needed
                     start_time = agent['start_time']
                     if isinstance(start_time, str):
-                        from datetime import datetime
                         start_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
                     start_times.append(start_time)
                 if agent.get('end_time'):
                     # Convert string to datetime if needed
                     end_time = agent['end_time']
                     if isinstance(end_time, str):
-                        from datetime import datetime
                         end_time = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
                     end_times.append(end_time)
             
@@ -231,7 +234,6 @@ class UnifiedTraceCollector:
                 trace_environment = hierarchical_trace.metadata.get('environment') or hierarchical_trace.metadata.get('mode')
             
             # Ensure we have valid datetime values for the API
-            from datetime import datetime
             current_time = datetime.utcnow()
             
             # Format datetimes with explicit UTC timezone indicator
@@ -352,14 +354,12 @@ class UnifiedTraceCollector:
                 agent_end_time = agent.get('end_time')
                 
                 if agent_start_time and isinstance(agent_start_time, str):
-                    from datetime import datetime
                     try:
                         agent_start_time = datetime.fromisoformat(agent_start_time.replace('Z', '+00:00')).isoformat() + "Z"
                     except (ValueError, AttributeError):
                         agent_start_time = None
                 
                 if agent_end_time and isinstance(agent_end_time, str):
-                    from datetime import datetime
                     try:
                         agent_end_time = datetime.fromisoformat(agent_end_time.replace('Z', '+00:00')).isoformat() + "Z"
                     except (ValueError, AttributeError):
@@ -530,7 +530,9 @@ class UnifiedTraceCollector:
     def _send_agent_to_api(self, agent_data: dict) -> None:
         """Send individual agent to API."""
         try:
-            import requests
+            if not REQUESTS_AVAILABLE:
+                logger.error("'requests' is required to send data. Install with: pip install requests")
+                return
             
             # Send to the traces API endpoint
             url = f"{self.sdk.config.endpoint}/api/v1/traces"
@@ -552,7 +554,9 @@ class UnifiedTraceCollector:
     def _send_batch_to_api(self, batch_data: dict) -> None:
         """Send batch trace data to API."""
         try:
-            import requests
+            if not REQUESTS_AVAILABLE:
+                logger.error("'requests' is required to send data. Install with: pip install requests")
+                return
             
             # Make batch_data JSON-serializable (convert UUIDs, datetimes, etc.)
             serializable_data = json_serializable(batch_data)
@@ -620,7 +624,9 @@ class UnifiedTraceCollector:
             return self._cached_user_id
             
         try:
-            import requests
+            if not REQUESTS_AVAILABLE:
+                logger.warning("'requests' is required to call whoami. Install with: pip install requests")
+                return None
             
             # Call whoami endpoint to get user ID and project ID
             whoami_url = f"{self.sdk.config.endpoint}/api/v1/auth/whoami"
