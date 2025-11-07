@@ -41,6 +41,7 @@ from .context import get_current_span
 from .decorators import trace as _trace_decorator
 from .workflow import workflow, Workflow
 from .chat_session import ChatSession, ChatSessionManager, create_chat_session, get_session_manager
+from .utils import json_loads
 
 # Optional integrations (only import if dependencies are available)
 try:
@@ -179,6 +180,7 @@ __all__ = [
     "start_chat_session",
     "get_session_manager",
     "get_vaquero_langgraph_handler_with_session",
+    "json_loads",
     "__version__",
 ]
 

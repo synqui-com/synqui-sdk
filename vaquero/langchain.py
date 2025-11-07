@@ -7,6 +7,8 @@ tools, and retrievers.
 
 from typing import Any, Dict, List, Optional
 import uuid
+from datetime import datetime
+import threading
 try:
     from langchain_core.callbacks.base import BaseCallbackHandler
     from langchain_core.outputs import LLMResult
@@ -75,6 +77,15 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
 
         # Track if trace has been finalized
         self._trace_finalized = False
+        
+        # Track recently closed agent spans for post-processing error capture
+        # Structure: List of dicts with span info, most recent first
+        # Each dict contains: trace_id, span_id, agent_name, closed_time, metadata
+        self._recently_closed_agent_spans = []
+        self._max_recent_spans = 10  # Keep last 10 closed agent spans
+        
+        # Register this handler for automatic error capture
+        _register_handler(self)
 
     def on_chain_start(self, serialized, inputs, *, run_id, parent_run_id=None, tags=None, metadata=None, **kwargs):
         """Called when a chain starts."""
@@ -154,6 +165,26 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
                     span.outputs = {"outputs": serialized_outputs}
                 except Exception:
                     span.set_tag("langchain.outputs", str(outputs)[:1000])  # Truncate for safety
+            
+            # Check if this is an agent span (has agent_name in metadata)
+            metadata = span.metadata or {}
+            langchain_metadata = metadata.get("langchain.metadata", {})
+            langchain_meta = langchain_metadata.get("metadata", {})
+            agent_name = langchain_meta.get("agent_name")
+            
+            # If this is an agent span, store it for post-processing error capture
+            if agent_name:
+                self._recently_closed_agent_spans.insert(0, {
+                    "trace_id": span.trace_id,
+                    "span_id": span.span_id,
+                    "agent_name": agent_name,
+                    "closed_time": datetime.utcnow(),
+                    "metadata": metadata.copy()
+                })
+                # Keep only the most recent spans
+                if len(self._recently_closed_agent_spans) > self._max_recent_spans:
+                    self._recently_closed_agent_spans.pop()
+            
             # Close the span
             cm.__exit__(None, None, None)
             del self._spans[run_id]
@@ -677,6 +708,79 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
             return f"<SerializationError: {type(data).__name__} - {str(e)}>"
 
 
+    def capture_post_processing_error(self, error: Exception, agent_name: Optional[str] = None, context: Optional[Dict[str, Any]] = None) -> bool:
+        """Capture a post-processing error that occurred after LangChain execution.
+        
+        This method finds the most recently closed agent span and creates a child error span.
+        It should be called when an error occurs in post-processing code (e.g., JSON parsing).
+        
+        Args:
+            error: The exception that occurred
+            agent_name: Optional agent name to filter by. If None, uses the most recent agent span.
+            context: Optional additional context to include in the error span
+            
+        Returns:
+            True if error was captured, False otherwise
+        """
+        try:
+            # Find the most recent closed agent span
+            closed_span_info = None
+            if agent_name:
+                # Find span matching the agent name
+                for span_info in self._recently_closed_agent_spans:
+                    if span_info["agent_name"] == agent_name:
+                        closed_span_info = span_info
+                        break
+            else:
+                # Use the most recent span
+                if self._recently_closed_agent_spans:
+                    closed_span_info = self._recently_closed_agent_spans[0]
+            
+            if not closed_span_info:
+                return False
+            
+            # Create a child error span
+            from .models import SpanStatus, TraceData
+            
+            # Create error span with explicit parent relationship
+            error_span = TraceData(
+                trace_id=closed_span_info["trace_id"],
+                parent_span_id=closed_span_info["span_id"],
+                agent_name=f"{closed_span_info['agent_name']}_post_processing_error",
+                function_name="post_processing",
+                metadata={
+                    "error_context": "post_processing",
+                    "error_type": type(error).__name__,
+                    "parent_agent": closed_span_info["agent_name"],
+                    **(context or {})
+                }
+            )
+            
+            # Set parent relationship in inputs and metadata
+            error_span.inputs = error_span.inputs or {}
+            error_span.inputs["parent_span_id"] = closed_span_info["span_id"]
+            error_span.metadata["parent_span_id"] = closed_span_info["span_id"]
+            
+            # Set error details
+            error_span.set_error(error)
+            
+            # Add context information
+            if context:
+                error_span.inputs = context.copy()
+            
+            # Finish the error span
+            error_span.finish(SpanStatus.FAILED)
+            
+            # Send to trace collector
+            if self.sdk:
+                self.sdk._send_trace(error_span)
+                return True
+            
+            return False
+        except Exception:
+            # Silently fail to avoid breaking user code
+            return False
+
     def finalize_trace(self):
         """Finalize the trace by ending it and sending to the database."""
         if hasattr(self, '_trace_finalized') and not self._trace_finalized and self._root_trace_id:
@@ -694,6 +798,50 @@ class VaqueroCallbackHandler(BaseCallbackHandler):
         self.finalize_trace()
 
 
+# Thread-local registry for active callback handlers
+_handler_registry = threading.local()
+
+def _register_handler(handler: VaqueroCallbackHandler):
+    """Register a callback handler in the thread-local registry."""
+    if not hasattr(_handler_registry, 'handlers'):
+        _handler_registry.handlers = []
+    _handler_registry.handlers.append(handler)
+    # Keep only the most recent handler per thread
+    if len(_handler_registry.handlers) > 1:
+        _handler_registry.handlers = [_handler_registry.handlers[-1]]
+
+def _get_active_handler() -> Optional[VaqueroCallbackHandler]:
+    """Get the most recently registered active callback handler."""
+    if hasattr(_handler_registry, 'handlers') and _handler_registry.handlers:
+        return _handler_registry.handlers[-1]
+    return None
+
+def capture_post_processing_error(error: Exception, agent_name: Optional[str] = None, context: Optional[Dict[str, Any]] = None) -> bool:
+    """Automatically capture a post-processing error.
+    
+    This utility function finds the active callback handler and captures the error.
+    It should be called when an error occurs in post-processing code after LangChain execution.
+    
+    Args:
+        error: The exception that occurred
+        agent_name: Optional agent name to filter by. If None, uses the most recent agent span.
+        context: Optional additional context to include in the error span
+        
+    Returns:
+        True if error was captured, False otherwise
+        
+    Example:
+        try:
+            result = json.loads(data)
+        except json.JSONDecodeError as e:
+            vaquero.langchain.capture_post_processing_error(e, agent_name="my_agent")
+            raise
+    """
+    handler = _get_active_handler()
+    if handler:
+        return handler.capture_post_processing_error(error, agent_name, context)
+    return False
+
 def get_vaquero_handler(
     sdk: Optional[VaqueroSDK] = None,
     parent_context: Optional[Dict[str, Any]] = None
@@ -701,7 +849,8 @@ def get_vaquero_handler(
     """Get a configured Vaquero callback handler for LangChain.
 
     This is a convenience function for creating a VaqueroCallbackHandler
-    with sensible defaults.
+    with sensible defaults. The handler is automatically registered for
+    post-processing error capture.
 
     Args:
         sdk: Vaquero SDK instance to use. If None, uses the global instance.

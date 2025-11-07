@@ -368,6 +368,23 @@ class UnifiedTraceCollector:
                 else:
                     output_data_normalized = output_data_raw
 
+                # Extract error information from agent dict
+                agent_error = agent.get('error')
+                error_message = None
+                error_type = None
+                error_stack_trace = None
+                if agent_error and isinstance(agent_error, dict):
+                    error_message = agent_error.get('message')
+                    error_type = agent_error.get('type')
+                    error_stack_trace = agent_error.get('traceback')
+                # Also check for direct error fields (in case they were already extracted)
+                if not error_message:
+                    error_message = agent.get('error_message')
+                if not error_type:
+                    error_type = agent.get('error_type')
+                if not error_stack_trace:
+                    error_stack_trace = agent.get('error_stack_trace')
+
                 agent_data = {
                     "trace_id": hierarchical_trace.trace_id,
                     "agent_id": agent.get('agent_id', str(uuid.uuid4())),
@@ -385,6 +402,10 @@ class UnifiedTraceCollector:
                     "status": agent.get('status', 'completed'),
                     "input_data": input_data_normalized,
                     "output_data": output_data_normalized,
+                    # Error fields
+                    "error_message": error_message,
+                    "error_type": error_type,
+                    "error_stack_trace": error_stack_trace,
                     # LLM-specific fields
                     "llm_model_name": llm_model_name,
                     "llm_model_provider": llm_model_provider,

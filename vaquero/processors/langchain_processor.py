@@ -327,6 +327,16 @@ class LangChainProcessor(FrameworkProcessor):
                     component_metadata['session_id'] = agent_session_id
                     component_tags['session_id'] = agent_session_id
 
+                # Extract error information from span
+                span_error = span.get('error')
+                error_message = None
+                error_type = None
+                error_stack_trace = None
+                if span_error and isinstance(span_error, dict):
+                    error_message = span_error.get('message')
+                    error_type = span_error.get('type')
+                    error_stack_trace = span_error.get('traceback')
+
                 component = {
                     'trace_id': trace_id,
                     'agent_id': span.get('span_id'),
@@ -353,7 +363,12 @@ class LangChainProcessor(FrameworkProcessor):
                     # Add model information for LLM components
                     'llm_model_name': span.get('model_name'),
                     'llm_model_provider': span.get('model_provider'),
-                    'llm_model_parameters': span.get('model_parameters')
+                    'llm_model_parameters': span.get('model_parameters'),
+                    # Add error information
+                    'error': span_error,
+                    'error_message': error_message,
+                    'error_type': error_type,
+                    'error_stack_trace': error_stack_trace
                 }
                 agents.append(component)
         
