@@ -259,9 +259,6 @@ def init(
     if project_api_key:
         # Create config with explicit API key and read other settings from environment manually
         # to avoid calling configure_from_env() which would fail validation
-        def str_to_bool(value: str) -> bool:
-            return value.lower() in ("true", "1", "yes", "on")
-        
         def parse_tags(tags_str: str) -> Dict[str, str]:
             if not tags_str:
                 return {}
@@ -283,10 +280,6 @@ def init(
             flush_interval=float(os.getenv("VAQUERO_FLUSH_INTERVAL", "5.0")),
             max_retries=int(os.getenv("VAQUERO_MAX_RETRIES", "3")),
             timeout=float(os.getenv("VAQUERO_TIMEOUT", "30.0")),
-            capture_inputs=str_to_bool(os.getenv("VAQUERO_CAPTURE_INPUTS", "true")),
-            capture_outputs=str_to_bool(os.getenv("VAQUERO_CAPTURE_OUTPUTS", "true")),
-            capture_errors=str_to_bool(os.getenv("VAQUERO_CAPTURE_ERRORS", "true")),
-            capture_tokens=str_to_bool(os.getenv("VAQUERO_CAPTURE_TOKENS", "true")),
             tags=parse_tags(os.getenv("VAQUERO_TAGS", "")),
         )
     else:
