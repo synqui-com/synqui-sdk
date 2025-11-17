@@ -254,8 +254,44 @@ def init(
     if environment not in ENVIRONMENT_PRESETS:
         raise ValueError(f"Unknown environment '{environment}'. Must be one of: {list(ENVIRONMENT_PRESETS.keys())}")
 
-    # Start with environment configuration for defaults
-    config = configure_from_env()
+    # If we have an explicit project_api_key, create config with it first to avoid validation errors
+    # Otherwise, try to get from environment
+    if project_api_key:
+        # Create config with explicit API key and read other settings from environment manually
+        # to avoid calling configure_from_env() which would fail validation
+        def str_to_bool(value: str) -> bool:
+            return value.lower() in ("true", "1", "yes", "on")
+        
+        def parse_tags(tags_str: str) -> Dict[str, str]:
+            if not tags_str:
+                return {}
+            try:
+                import json
+                return json.loads(tags_str)
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        
+        # Get environment values manually
+        env_project_id = os.getenv("VAQUERO_PROJECT_ID", "")
+        env_endpoint = os.getenv("VAQUERO_ENDPOINT", "https://api.vaquero.com")
+        
+        config = SDKConfig(
+            api_key=project_api_key,  # Use explicit key to pass validation
+            project_id=env_project_id if not project_id else None,
+            endpoint=env_endpoint if not endpoint else None,
+            batch_size=int(os.getenv("VAQUERO_BATCH_SIZE", "100")),
+            flush_interval=float(os.getenv("VAQUERO_FLUSH_INTERVAL", "5.0")),
+            max_retries=int(os.getenv("VAQUERO_MAX_RETRIES", "3")),
+            timeout=float(os.getenv("VAQUERO_TIMEOUT", "30.0")),
+            capture_inputs=str_to_bool(os.getenv("VAQUERO_CAPTURE_INPUTS", "true")),
+            capture_outputs=str_to_bool(os.getenv("VAQUERO_CAPTURE_OUTPUTS", "true")),
+            capture_errors=str_to_bool(os.getenv("VAQUERO_CAPTURE_ERRORS", "true")),
+            capture_tokens=str_to_bool(os.getenv("VAQUERO_CAPTURE_TOKENS", "true")),
+            tags=parse_tags(os.getenv("VAQUERO_TAGS", "")),
+        )
+    else:
+        # No explicit API key, try from environment
+        config = configure_from_env()
 
     # Apply environment preset
     preset = ENVIRONMENT_PRESETS[environment].copy()
@@ -263,7 +299,7 @@ def init(
         if hasattr(config, key):
             setattr(config, key, value)
 
-    # Override with provided parameters
+    # Override with provided parameters (these take precedence)
     if project_api_key is not None:
         config.api_key = project_api_key
     if endpoint is not None:
