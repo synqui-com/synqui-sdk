@@ -1,5 +1,7 @@
 # 🤠 Synqui Python SDK
 
+<img width="500" height="500" alt="Image" src="https://github.com/user-attachments/assets/9d343492-54c5-4f0b-91c4-e70cbc745a7b" />
+
 <div align="center">
   <h3>System intelligence for multi-agent AI</h3>
   <p><strong>Architecture extraction</strong> • <strong>Agent coordination</strong> • <strong>Performance insights</strong></p>
