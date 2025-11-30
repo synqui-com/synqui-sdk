@@ -1,9 +1,10 @@
-# 🤠 Synqui Python SDK
-
-<img width="500" height="500" alt="Image" src="https://github.com/user-attachments/assets/9d343492-54c5-4f0b-91c4-e70cbc745a7b" />
+# synqui python SDK
 
 <div align="center">
-  <h3>System intelligence for multi-agent AI</h3>
+
+  <img width="200" height="200" alt="Image" src="https://github.com/user-attachments/assets/c244a26c-947e-4c27-a019-14342443e777" />
+  
+  <h3>The Complete Platform for Multi-Agent Systems </h3>
   <p><strong>Architecture extraction</strong> • <strong>Agent coordination</strong> • <strong>Performance insights</strong></p>
 
   [![PyPI version](https://badge.fury.io/py/synqui-sdk.svg)](https://badge.fury.io/py/synqui-sdk)
@@ -23,7 +24,7 @@ pip install synqui-sdk
 > **Note:** The package is installed as `synqui-sdk`, but imported in Python as `import synqui`.
 
 ### 2. Get Your API Key
-1. Go to the [Synqui Dashboard](https://www.synqui.app)
+1. Go to the [Synqui Dashboard](https://www.synqui.com)
 2. Create a new project (or select an existing one)
 3. Navigate to the project's **Settings** page
 4. Click **Create Project API Key** (keys start with `cf_`)
@@ -80,7 +81,7 @@ llm.invoke("Hello, world!")
 - **[🚨 Best Practices](docs/BEST_PRACTICES.md)** - Recommended patterns and common pitfalls
 - **[💡 Examples Directory](examples/)** - Real-world examples and integration patterns
 - **[🎯 Demo: Article Explainer](demos/article-explainer/)** - Full-featured demo application using LangGraph and Synqui
-- **[🌐 Web Documentation](https://www.synqui.app/docs)** - Complete API reference and guides
+- **[🌐 Web Documentation](https://www.synqui.com/docs)** - Complete API reference and guides
 
 ---
 
@@ -93,7 +94,7 @@ pip install synqui-sdk
 
 ### From Source
 ```bash
-git clone https://github.com/nateislas/synqui-sdk.git
+git clone https://github.com/synqui-com/synqui-sdk.git
 cd synqui-sdk
 pip install -e .
 ```
@@ -112,5 +113,5 @@ Join our community! See [Contributing Guide](CONTRIBUTING.md)
 ---
 
 <div align="center">
-  <p><strong>Need help?</strong> Join our <a href="https://discord.gg/synqui">Discord community</a> or email <a href="mailto:support@synqui.app">support@synqui.app</a></p>
+  <p><strong>Need help?</strong> Join our <a href="https://discord.gg/synqui">Discord community</a> or email <a href="mailto:support@synqui.com">support@synqui.com</a></p>
 </div>
